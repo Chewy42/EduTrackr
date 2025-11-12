@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+.env
+.cursor
+.playwright-mcp
+.prompts
+.pytest_cache
+.context
+ai_docs
+__pycache__
+
+
+AGENTS.md
