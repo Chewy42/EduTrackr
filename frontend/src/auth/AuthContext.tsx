@@ -89,12 +89,20 @@ export function AuthProvider({ children }: Props) {
   const refreshPreferences = async () => {
     if (!jwt) return
 
-    const serverPreferences: UserPreferences = {
-      theme: 'dark',
-      landingView: 'dashboard',
-    }
+    try {
+      const res = await fetch('/api/auth/preferences', {
+        headers: {
+          'Authorization': `Bearer ${jwt}`,
+          'Accept': 'application/json'
+        }
+      })
 
-    persistPreferences(serverPreferences)
+      if (res.ok) {
+        const prefs = await res.json() as UserPreferences
+        persistPreferences(prefs)
+      }
+    } catch {
+    }
   }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -111,13 +119,32 @@ export function AuthProvider({ children }: Props) {
         throw new Error('Passwords must match.')
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 400))
+      const endpoint = mode === 'sign_in' ? '/api/auth/sign-in' : '/api/auth/sign-up'
+      
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          email: auth.email,
+          password: auth.password
+        })
+      })
 
-      const fakeJwt = 'stub.jwt.token'
-      persistJwt(fakeJwt)
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Unable to process request.')
+      }
+
+      persistJwt(data.token)
       setSessionState('authenticated')
 
-      await refreshPreferences()
+      if (data.preferences) {
+        persistPreferences(data.preferences)
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to process request.'
       setError(message)

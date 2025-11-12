@@ -139,8 +139,7 @@ export default function App() {
                 py: 1,
                 px: 2,
                 borderRadius: 2,
-                bgcolor: 'error.light',
-                bgcolor: opacity => `rgba(239, 68, 68, ${opacity * 0.1})`
+                bgcolor: 'rgba(239, 68, 68, 0.1)'
               }}>{error}</Box>
             ) : null}
             <SubmitButton loading={loading}>
