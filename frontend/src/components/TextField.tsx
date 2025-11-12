@@ -24,30 +24,77 @@ export default function TextField({
 	required,
 	leftIcon,
 }: TextFieldProps) {
-	return (
-		<Box>
-			<MuiTextField
-				label={label}
-				type={type}
-				value={value}
-				onChange={(e) => onChange(e.target.value)}
-				placeholder={placeholder}
-				autoComplete={autoComplete}
-				required={required}
-				fullWidth
-				InputProps={
-					leftIcon
-						? {
-								startAdornment: (
-									<InputAdornment position="start">
-										<Box sx={{ display: 'inline-flex', color: 'action.active' }}>{leftIcon}</Box>
-									</InputAdornment>
-								),
-						  }
-						: undefined
-				}
-			/>
-		</Box>
-	);
+    return (
+        <Box>
+            <MuiTextField
+                label={label}
+                type={type}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={placeholder}
+                autoComplete={autoComplete}
+                required={required}
+                fullWidth
+                variant="outlined"
+                sx={{
+                    '& .MuiOutlinedInput-root': {
+                        borderRadius: 0.5,
+                        backgroundColor: 'background.paper',
+                        transition: 'all 0.2s ease-in-out',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        '& fieldset': {
+                            border: 'none',
+                        },
+                        '&:hover': {
+                            borderColor: '#000000',
+                            backgroundColor: 'background.paper',
+                            boxShadow: 'none',
+                        },
+                        '&.Mui-focused': {
+                            borderColor: '#000000',
+                            backgroundColor: 'background.paper',
+                            boxShadow: 'none',
+                        },
+                    },
+                    '& input': {
+                        fontSize: '0.9375rem',
+                        paddingBlock: '12px',
+                        paddingInline: '16px',
+                    },
+                    '& .MuiInputLabel-root': {
+                        fontSize: '0.9375rem',
+                        fontWeight: 500,
+                        color: '#000000',
+                        '&.Mui-focused': {
+                            color: '#000000',
+                        },
+                        '&.MuiFormLabel-filled': {
+                            transform: 'translateY(-10px) scale(0.85)',
+                        },
+                    },
+                    // Adornment icon color sync
+                    '& .MuiInputAdornment-root .MuiBox-root': {
+                        color: '#000000',
+                        transition: 'color 160ms ease',
+                    },
+                    '& .MuiOutlinedInput-root.Mui-focused .MuiInputAdornment-root .MuiBox-root': {
+                        color: '#000000',
+                    },
+                }}
+                InputProps={
+                    leftIcon
+                        ? {
+                            startAdornment: (
+                                <InputAdornment position="start">
+                                    <Box sx={{ display: 'inline-flex', color: 'text.secondary' }}>{leftIcon}</Box>
+                                </InputAdornment>
+                            ),
+                          }
+                        : undefined
+                }
+            />
+        </Box>
+    );
 }
 

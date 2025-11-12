@@ -14,31 +14,87 @@ type AuthCardProps = {
 
 export default function AuthCard({ title, subtitle, children, footer }: AuthCardProps) {
     return (
-        <Box sx={{ width: '100%', maxWidth: 560, mx: 'auto' }}>
-            <Card elevation={8} sx={{ bgcolor: 'background.paper', borderRadius: 3 }}>
-                <CardContent sx={{ pb: 2, px: { xs: 3, sm: 5 }, pt: { xs: 3, sm: 4 } }}>
-                    <Typography variant="h6" component="h1" gutterBottom>
-                        {title}
-                    </Typography>
-                    {subtitle ? (
-                        <Typography variant="caption" color="text.secondary">
-                            {subtitle}
+        <Box sx={{ 
+            width: '100%', 
+            maxWidth: 560, 
+            mx: 'auto',
+            p: { xs: 2, sm: 3 }
+        }}>
+            <Card 
+                elevation={0} 
+                sx={{ 
+                    bgcolor: 'background.paper',
+                    borderRadius: 2,
+                    overflow: 'visible',
+                    position: 'relative'
+                }}
+            >
+                <CardContent sx={{ 
+                    pb: 3, 
+                    px: { xs: 4, sm: 6 }, 
+                    pt: { xs: 6, sm: 8 },
+                    position: 'relative'
+                }}>
+                    <Box sx={{ textAlign: 'center', mb: 2 }}>
+                        <Typography 
+                            variant="h4" 
+                            component="h1" 
+                            gutterBottom
+                            sx={{ 
+                                fontWeight: 700,
+                                color: 'text.primary',
+                                mb: 1.5,
+                                letterSpacing: '-0.02em'
+                            }}
+                        >
+                            {title}
                         </Typography>
-                    ) : null}
+                        {subtitle ? (
+                            <Typography 
+                                variant="body2" 
+                                color="text.secondary"
+                                sx={{ 
+                                    maxWidth: 420,
+                                    mx: 'auto',
+                                    lineHeight: 1.6,
+                                    fontWeight: 400
+                                }}
+                            >
+                                {subtitle}
+                            </Typography>
+                        ) : null}
+                    </Box>
                 </CardContent>
-                <Divider />
-                <CardContent sx={{ pt: { xs: 2.5, sm: 3 }, px: { xs: 3, sm: 5 }, pb: { xs: 3, sm: 4 } }}>
-                    {children}
+                
+                <Divider sx={{ mx: { xs: 4, sm: 6 } }} />
+                
+                <CardContent sx={{ 
+                    pt: { xs: 5, sm: 6 }, 
+                    px: { xs: 4, sm: 6 }, 
+                    pb: { xs: 5, sm: 6 }
+                }}>
+                    <Box sx={{
+                        '& > * + *': { mt: 3.5 },
+                    }}>
+                        {children}
+                    </Box>
                 </CardContent>
+                
                 {footer ? (
                     <>
-                        <Divider />
-                        <CardContent sx={{ px: { xs: 3, sm: 5 }, pb: { xs: 3, sm: 4 } }}>{footer}</CardContent>
+                        <Divider sx={{ mx: { xs: 4, sm: 6 } }} />
+                        <CardContent sx={{ 
+                            px: { xs: 4, sm: 6 }, 
+                            pb: { xs: 6, sm: 8 },
+                            pt: { xs: 4, sm: 5 }
+                        }}>
+                            <Box sx={{ textAlign: 'center' }}>
+                                {footer}
+                            </Box>
+                        </CardContent>
                     </>
                 ) : null}
             </Card>
         </Box>
     );
 }
-
-

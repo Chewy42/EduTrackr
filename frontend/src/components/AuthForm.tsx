@@ -43,6 +43,7 @@ export default function AuthForm({
         onChange={(v) => setField("password", v)}
         placeholder={mode === "sign_in" ? "Enter your password" : "Create a strong password"}
         leftIcon={<FiLock size={16} />}
+        sx={{ marginBottom: 2 }}
       />
 
       {mode === "sign_up" && (

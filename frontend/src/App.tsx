@@ -21,8 +21,22 @@ export default function App() {
 
   if (sessionState === "checking") {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default', color: 'text.primary' }}>
-        <Box sx={{ animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite', fontSize: '0.875rem', fontWeight: 500, letterSpacing: '0.025em' }}>
+      <Box sx={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        bgcolor: 'background.default', 
+        color: 'text.primary',
+        px: 2
+      }}>
+        <Box sx={{ 
+          animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite', 
+          fontSize: '0.9375rem', 
+          fontWeight: 500, 
+          letterSpacing: '0.025em',
+          textAlign: 'center'
+        }}>
           Preparing your EduTrackr workspace...
         </Box>
       </Box>
@@ -31,12 +45,25 @@ export default function App() {
 
   if (sessionState === "authenticated") {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default', color: 'text.primary', px: 2 }}>
+      <Box sx={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        bgcolor: 'background.default', 
+        color: 'text.primary', 
+        px: 2
+      }}>
         <AuthCard
           title="Welcome to EduTrackr"
           subtitle="You are signed in. Next: connect session state and onboarding."
         >
-          <Box sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+          <Box sx={{ 
+            fontSize: '0.875rem', 
+            color: 'text.secondary',
+            textAlign: 'center',
+            py: 1
+          }}>
             This placeholder view confirms authentication flow is working.
           </Box>
         </AuthCard>
@@ -45,54 +72,42 @@ export default function App() {
   }
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default', color: 'text.primary', px: 2 }}>
-      <Box sx={{ position: 'relative', py: 3 }}>
-        <Box sx={{ position: 'relative' }}>
-          <AuthCard
-            title="EduTrackr"
-            subtitle="Sign in or create your account to continue"
-            footer={
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: 'text.secondary' }}>
-                <span>Protected for verified @chapman.edu accounts.</span>
-                <Box sx={(theme) => ({
-                  px: 1,
-                  py: 0.5,
-                  borderRadius: '9999px',
-                  bgcolor: 'primary.light',
-                  color: 'primary.dark',
-                  border: '1px solid',
-                  borderColor: 'primary.main',
-                  fontSize: '0.625rem',
-                  fontWeight: 700,
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                  backgroundColor: theme.palette.action.hover,
-                })}>
-                  Auth ready
-                </Box>
-              </Box>
-            }
+    <Box sx={{ 
+      minHeight: '100vh', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      bgcolor: 'background.default', 
+      color: 'text.primary', 
+      px: 2,
+      py: 3
+    }}>
+      <Box sx={{ position: 'relative', width: '100%', maxWidth: 560 }}>
+        <AuthCard
+          title="EduTrackr"
+          subtitle="Sign in or create your account to continue"
+        >
+          <Box sx={{ mb: { xs: 3, sm: 4 } }}>
+            <AuthTabs mode={mode} onChange={setMode} />
+          </Box>
+          <Box
+            component="form"
+            onSubmit={handleSubmit}
+            sx={{
+              '& > * + *': { mt: { xs: 3, sm: 3.5 } },
+            }}
           >
-            <Box sx={{ mb: { xs: 2.5, sm: 3 } }}>
-              <AuthTabs mode={mode} onChange={setMode} />
-            </Box>
-            <Box
-              component="form"
-              onSubmit={handleSubmit}
-              sx={{
-                '& > * + *': { mt: { xs: 2.5, sm: 3 } },
-              }}
-            >
-              <TextField
-                label="Chapman Email"
-                type="email"
-                value={auth.email}
-                onChange={(v) => setField("email", v)}
-                placeholder="you@chapman.edu"
-                autoComplete="email"
-                required
-                leftIcon={<FiMail size={16} />}
-              />
+            <TextField
+              label="Chapman Email"
+              type="email"
+              value={auth.email}
+              onChange={(v) => setField("email", v)}
+              placeholder="you@chapman.edu"
+              autoComplete="email"
+              required
+              leftIcon={<FiMail size={16} />}
+            />
+            <Box sx={{ mb: 1 }}>
               <TextField
                 label="Password"
                 type="password"
@@ -103,27 +118,36 @@ export default function App() {
                 required
                 leftIcon={<FiLock size={16} />}
               />
-              {mode === "sign_up" ? (
-                <TextField
-                  label="Confirm Password"
-                  type="password"
-                  value={auth.confirmPassword}
-                  onChange={(v) => setField("confirmPassword", v)}
-                  placeholder="Re-enter password"
-                  autoComplete="new-password"
-                  required
-                  leftIcon={<FiLock size={16} />}
-                />
-              ) : null}
-              {error ? (
-                <Box sx={{ fontSize: '0.75rem', color: 'error.main' }}>{error}</Box>
-              ) : null}
-              <SubmitButton loading={loading}>
-                {mode === "sign_in" ? "Sign In" : "Create Account"}
-              </SubmitButton>
             </Box>
-          </AuthCard>
-        </Box>
+            {mode === "sign_up" ? (
+              <TextField
+                label="Confirm Password"
+                type="password"
+                value={auth.confirmPassword}
+                onChange={(v) => setField("confirmPassword", v)}
+                placeholder="Re-enter password"
+                autoComplete="new-password"
+                required
+                leftIcon={<FiLock size={16} />}
+              />
+            ) : null}
+            {error ? (
+              <Box sx={{ 
+                fontSize: '0.875rem', 
+                color: 'error.main',
+                textAlign: 'center',
+                py: 1,
+                px: 2,
+                borderRadius: 2,
+                bgcolor: 'error.light',
+                bgcolor: opacity => `rgba(239, 68, 68, ${opacity * 0.1})`
+              }}>{error}</Box>
+            ) : null}
+            <SubmitButton loading={loading}>
+              {mode === "sign_in" ? "Sign In" : "Create Account"}
+            </SubmitButton>
+          </Box>
+        </AuthCard>
       </Box>
     </Box>
   );

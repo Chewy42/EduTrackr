@@ -1,5 +1,6 @@
 import React from "react";
 import Button from "@mui/material/Button";
+import Box from "@mui/material/Box";
 
 type SubmitButtonProps = {
 	loading?: boolean;
@@ -14,24 +15,28 @@ export default function SubmitButton({ loading, children }: SubmitButtonProps) {
             fullWidth
             disabled={!!loading}
             sx={{
-                borderRadius: 2,
-                fontWeight: 700,
+                borderRadius: 0.5,
+                fontWeight: 600,
                 minHeight: 48,
-                boxShadow:
-                    '0 6px 12px rgba(14, 30, 37, 0.08), 0 2px 4px rgba(14, 30, 37, 0.08)',
-                transition: 'transform 120ms ease, box-shadow 160ms ease, background-color 160ms ease',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                background: '#2563eb',
+                color: 'white',
                 '&:hover': {
-                    boxShadow:
-                        '0 10px 18px rgba(14, 30, 37, 0.10), 0 4px 8px rgba(14, 30, 37, 0.10)',
-                    transform: 'translateY(-1px)'
+                    background: '#1d4ed8',
+                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1)',
+                    transform: 'translateY(-1px)',
                 },
                 '&:active': {
-                    boxShadow:
-                        '0 4px 8px rgba(14, 30, 37, 0.12), 0 1px 3px rgba(14, 30, 37, 0.16)',
-                    transform: 'translateY(0)'
+                    background: '#1d4ed8',
+                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1), 0 1px 1px rgba(0, 0, 0, 0.06)',
+                    transform: 'translateY(0)',
                 },
                 '&.Mui-disabled': {
-                    boxShadow: 'none'
+                    background: '#93c5fd',
+                    color: '#ffffff',
+                    boxShadow: 'none',
+                    transform: 'none',
                 }
             }}
         >
