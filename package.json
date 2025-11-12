@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"cd backend && python -m flask --app app.main:app run --host=127.0.0.1 --port=8000\" \"cd frontend && npm run dev\"",
+    "dev": "concurrently \"cd backend && python -m flask --app app.main:app run --host=0.0.0.0 --port=5000\" \"cd frontend && npm run dev\"",
     "dev:docker": "docker compose up --build",
     "preview": "docker compose -f docker-compose.yml up client_preview",
     "build": "cd frontend && npm run build"
@@ -12,4 +12,3 @@
     "concurrently": "^9.2.1"
   }
 }
-

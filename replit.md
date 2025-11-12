@@ -9,7 +9,7 @@ EduTrackr is a full-stack web application for Chapman University students to tra
 - **Framework**: React 18 with TypeScript
 - **Build Tool**: Vite 5
 - **Styling**: Material-UI (MUI) + Tailwind CSS
-- **Port**: 5000 (production-facing)
+- **Port**: 5173 (mapped to port 80 in Replit deployments)
 - **Features**: 
   - User authentication (sign-in/sign-up)
   - Chapman.edu email validation
@@ -18,7 +18,7 @@ EduTrackr is a full-stack web application for Chapman University students to tra
 
 ### Backend
 - **Framework**: Flask (Python 3.11)
-- **Port**: 8000 (internal, proxied by Vite)
+- **Port**: 5000 (internal, proxied by Vite)
 - **Features**:
   - RESTful API endpoints
   - JWT authentication
@@ -34,16 +34,12 @@ EduTrackr is a full-stack web application for Chapman University students to tra
 ## Development Setup
 
 ### Running the Application
-The application runs both frontend and backend concurrently:
-```bash
-npm run dev
-```
+Use Replit's Run button workflows (or run the commands manually):
 
-This starts:
-- Flask backend on http://127.0.0.1:8000
-- Vite frontend on http://0.0.0.0:5000
+- **Dev** → `npm run dev` (default). Runs Flask on port 5000 and Vite on 5173.
+- **DevDocker** → `npm run dev:docker`. Spins up Docker Compose, mapping host port 5173 to container port 80 so the frontend mimics the production ingress while the backend still listens on 5000.
 
-The frontend proxies `/api/*` requests to the backend.
+Both options proxy `/api/*` to the backend.
 
 ### Project Structure
 ```
@@ -71,12 +67,12 @@ The frontend proxies `/api/*` requests to the backend.
 ### Frontend Configuration
 - API base URL: `/api` (proxied to backend)
 - Host: `0.0.0.0` (accessible via Replit preview)
-- Port: `5000`
-- Proxy: `/api` → `http://127.0.0.1:8000`
+- Port: `CLIENT_PORT` env (defaults to `5173`, overridden to `80` inside Docker while still exposed on host `5173`)
+- Proxy target: `VITE_PROXY_TARGET` / `SERVER_URL` (defaults to `http://127.0.0.1:5000`, set to `http://backend:5000` in Docker)
 
 ### Backend Configuration
-- Host: `127.0.0.1` (local only, accessed via proxy)
-- Port: `8000`
+- Host: `0.0.0.0` (bound for both local development and Replit)
+- Port: `5000`
 - JWT Secret: Configured via `JWT_SECRET_KEY` environment variable (defaults to dev key)
 
 ## Dependencies
@@ -110,7 +106,7 @@ The application is configured for autoscale deployment on Replit, running both f
 ## Recent Changes
 - 2025-11-12: Initial setup for Replit environment
   - Created Flask backend with auth endpoints
-  - Configured Vite to run on port 5000 with backend proxy
+  - Configured Vite to run on port 5173 with backend proxy
   - Integrated frontend with real backend API calls
   - Set up unified development workflow
 

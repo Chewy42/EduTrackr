@@ -39,7 +39,7 @@ def sign_up():
         }), 201
         
     except Exception as e:
-        return jsonify({'error': 'Unable to process request.'}), 500
+        return jsonify({'error': 'Ensure you are using a valid chapman.edu account AND do not already have an account.'}), 500
 
 @app.route('/auth/sign-in', methods=['POST'])
 def sign_in():
@@ -63,7 +63,7 @@ def sign_in():
         }), 200
         
     except Exception as e:
-        return jsonify({'error': 'Unable to process request.'}), 500
+        return jsonify({'error': 'Incorrect email or password.'}), 500
 
 @app.route('/auth/preferences', methods=['GET'])
 def get_preferences():
@@ -87,5 +87,8 @@ def get_preferences():
         return jsonify({'error': 'Invalid token'}), 401
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 8000))
-    app.run(host='127.0.0.1', port=port, debug=True)
+    explicit_backend_port = os.getenv('SERVER_PORT')
+    port = int(explicit_backend_port or os.getenv('PORT', 5000))
+    host = os.getenv('HOST', '0.0.0.0')
+    debug_mode = os.getenv('DEBUG', 'true').lower() == 'true'
+    app.run(host=host, port=port, debug=debug_mode)

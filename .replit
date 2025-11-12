@@ -4,39 +4,43 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
+packages = ["docker_27"]
 
 [workflows]
-runButton = "Project"
+runButton = "Dev"
 
 [[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "EduTrackr"
-
-[[workflows.workflow]]
-name = "EduTrackr"
+name = "Dev"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm run dev"
-waitForPort = 5000
+waitForPort = 5173
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "DevDocker"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev:docker"
+waitForPort = 5173
 
 [workflows.workflow.metadata]
 outputType = "webview"
 
 [[ports]]
 localPort = 5000
-externalPort = 80
+externalPort = 5000
 
 [[ports]]
-localPort = 34503
-externalPort = 3000
+localPort = 5173
+externalPort = 80
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["bash", "-c", "concurrently \"cd backend && python -m flask --app app.main:app run --host=127.0.0.1 --port=8000\" \"cd frontend && npm run dev\""]
+run = ["bash", "-c", "concurrently \"cd backend && python -m flask --app app.main:app run --host=0.0.0.0 --port=5000\" \"cd frontend && npm run dev\""]
