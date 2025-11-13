@@ -1,47 +1,23 @@
-import React from "react";
-import Button from "@mui/material/Button";
-import Box from "@mui/material/Box";
+import React from 'react';
 
 type SubmitButtonProps = {
 	loading?: boolean;
 	children: React.ReactNode;
+	onClick?: () => void;
 };
 
-export default function SubmitButton({ loading, children }: SubmitButtonProps) {
-    return (
-        <Button
-            type="submit"
-            variant="contained"
-            fullWidth
-            disabled={!!loading}
-            sx={{
-                borderRadius: 0.5,
-                fontWeight: 600,
-                minHeight: 48,
-                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                background: '#2563eb',
-                color: 'white',
-                '&:hover': {
-                    background: '#1d4ed8',
-                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1)',
-                    transform: 'translateY(-1px)',
-                },
-                '&:active': {
-                    background: '#1d4ed8',
-                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1), 0 1px 1px rgba(0, 0, 0, 0.06)',
-                    transform: 'translateY(0)',
-                },
-                '&.Mui-disabled': {
-                    background: '#93c5fd',
-                    color: '#ffffff',
-                    boxShadow: 'none',
-                    transform: 'none',
-                }
-            }}
-        >
-            {loading ? "Please wait..." : children}
-        </Button>
-    );
+export default function SubmitButton({ loading, children, onClick }: SubmitButtonProps) {
+	return (
+		<button
+			type="submit"
+			disabled={!!loading}
+			onClick={onClick}
+			className={
+				'inline-flex w-full items-center justify-center rounded-xl bg-brand-600 text-white text-sm font-semibold py-3.5 px-4 shadow-md transition-all duration-200 ease-out ' +
+				'hover:bg-brand-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 disabled:bg-brand-300 disabled:shadow-none disabled:cursor-not-allowed'
+			}
+		>
+			{loading ? 'Please wait...' : children}
+		</button>
+	);
 }
-

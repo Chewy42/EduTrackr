@@ -8,7 +8,7 @@ export type AuthState = {
   confirmPassword: string
 }
 
-export type SessionState = 'checking' | 'unauthenticated' | 'authenticated'
+export type SessionState = 'checking' | 'unauthenticated' | 'authenticated' | 'pending_confirmation'
 
 export type UserPreferences = {
   theme?: 'light' | 'dark'
@@ -23,10 +23,12 @@ export type AuthContextValue = {
   error: string | null
   preferences: UserPreferences
   jwt: string | null
+  pendingEmail: string | null
   setMode: (mode: AuthMode) => void
   setField: (field: keyof AuthState, value: string) => void
   handleSubmit: (event: React.FormEvent<HTMLFormElement>) => Promise<void>
   refreshPreferences: () => Promise<void>
+  resendConfirmation: () => Promise<void>
   signOut: () => void
 }
 
@@ -47,6 +49,7 @@ export function AuthProvider({ children }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [preferences, setPreferences] = useState<UserPreferences>({})
   const [jwt, setJwt] = useState<string | null>(null)
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null)
 
   useEffect(() => {
     const storedToken = typeof window !== 'undefined' ? window.localStorage.getItem(LOCAL_SESSION_KEY) : null
@@ -72,10 +75,15 @@ export function AuthProvider({ children }: Props) {
     setAuth((prev) => ({ ...prev, [field]: value }))
   }
 
-  const persistJwt = (token: string) => {
+  const persistJwt = (token: string | null) => {
     setJwt(token)
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') {
+      return
+    }
+    if (token) {
       window.localStorage.setItem(LOCAL_SESSION_KEY, token)
+    } else {
+      window.localStorage.removeItem(LOCAL_SESSION_KEY)
     }
   }
 
@@ -139,6 +147,13 @@ export function AuthProvider({ children }: Props) {
         throw new Error(data.error || 'Unable to process request.')
       }
 
+      if (data.status === 'pending_confirmation') {
+        setSessionState('pending_confirmation')
+        setPendingEmail(data.user?.email ?? auth.email)
+        persistJwt(null)
+        return
+      }
+
       persistJwt(data.token)
       setSessionState('authenticated')
 
@@ -153,13 +168,33 @@ export function AuthProvider({ children }: Props) {
     }
   }
 
+  const resendConfirmation = async () => {
+    if (!pendingEmail) {
+      throw new Error('No pending email to confirm.')
+    }
+
+    const res = await fetch('/api/auth/resend-confirmation', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ email: pendingEmail })
+    })
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'Unable to resend confirmation email.')
+    }
+  }
+
   const signOut = () => {
     setSessionState('unauthenticated')
-    setJwt(null)
+    persistJwt(null)
     setAuth({ email: '', password: '', confirmPassword: '' })
     setPreferences({})
+    setPendingEmail(null)
     if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(LOCAL_SESSION_KEY)
       window.localStorage.removeItem(LOCAL_PREF_KEY)
     }
   }
@@ -173,13 +208,15 @@ export function AuthProvider({ children }: Props) {
       error,
       preferences,
       jwt,
+      pendingEmail,
       setMode,
       setField,
       handleSubmit,
       refreshPreferences,
+      resendConfirmation,
       signOut,
     }),
-    [sessionState, mode, auth, loading, error, preferences, jwt]
+    [sessionState, mode, auth, loading, error, preferences, jwt, pendingEmail]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

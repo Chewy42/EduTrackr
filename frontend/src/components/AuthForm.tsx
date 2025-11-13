@@ -26,7 +26,7 @@ export default function AuthForm({
   onSubmit,
 }: Props) {
   return (
-    <form onSubmit={onSubmit} style={{ marginTop: 8 }}>
+    <form onSubmit={onSubmit} className={"mt-2 space-y-4 sm:space-y-5"}>
       <TextField
         label="Email"
         type="email"
@@ -43,7 +43,6 @@ export default function AuthForm({
         onChange={(v) => setField("password", v)}
         placeholder={mode === "sign_in" ? "Enter your password" : "Create a strong password"}
         leftIcon={<FiLock size={16} />}
-        sx={{ marginBottom: 2 }}
       />
 
       {mode === "sign_up" && (
@@ -57,9 +56,11 @@ export default function AuthForm({
         />
       )}
 
-      {error && <p style={{ fontSize: 12, color: '#dc2626' }}>{error}</p>}
+      {error && (
+        <p className={"mt-1 text-xs text-danger text-center"}>{error}</p>
+      )}
 
-      <div style={{ marginTop: 8 }}>
+      <div className={"pt-1"}>
         <SubmitButton loading={loading}>
           {mode === "sign_in" ? "Sign In" : "Create Account"}
         </SubmitButton>
@@ -67,5 +68,3 @@ export default function AuthForm({
     </form>
   );
 }
-
-

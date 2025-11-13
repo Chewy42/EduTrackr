@@ -1,11 +1,8 @@
-import React from "react";
-import MuiTextField from "@mui/material/TextField";
-import InputAdornment from "@mui/material/InputAdornment";
-import Box from "@mui/material/Box";
+import React from 'react';
 
 type TextFieldProps = {
 	label: string;
-	type?: "text" | "email" | "password";
+	type?: 'text' | 'email' | 'password';
 	value: string;
 	onChange: (value: string) => void;
 	placeholder?: string;
@@ -16,7 +13,7 @@ type TextFieldProps = {
 
 export default function TextField({
 	label,
-	type = "text",
+	type = 'text',
 	value,
 	onChange,
 	placeholder,
@@ -24,77 +21,30 @@ export default function TextField({
 	required,
 	leftIcon,
 }: TextFieldProps) {
-    return (
-        <Box>
-            <MuiTextField
-                label={label}
-                type={type}
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                placeholder={placeholder}
-                autoComplete={autoComplete}
-                required={required}
-                fullWidth
-                variant="outlined"
-                sx={{
-                    '& .MuiOutlinedInput-root': {
-                        borderRadius: 0.5,
-                        backgroundColor: 'background.paper',
-                        transition: 'all 0.2s ease-in-out',
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        '& fieldset': {
-                            border: 'none',
-                        },
-                        '&:hover': {
-                            borderColor: '#000000',
-                            backgroundColor: 'background.paper',
-                            boxShadow: 'none',
-                        },
-                        '&.Mui-focused': {
-                            borderColor: '#000000',
-                            backgroundColor: 'background.paper',
-                            boxShadow: 'none',
-                        },
-                    },
-                    '& input': {
-                        fontSize: '0.9375rem',
-                        paddingBlock: '12px',
-                        paddingInline: '16px',
-                    },
-                    '& .MuiInputLabel-root': {
-                        fontSize: '0.9375rem',
-                        fontWeight: 500,
-                        color: '#000000',
-                        '&.Mui-focused': {
-                            color: '#000000',
-                        },
-                        '&.MuiFormLabel-filled': {
-                            transform: 'translateY(-10px) scale(0.85)',
-                        },
-                    },
-                    // Adornment icon color sync
-                    '& .MuiInputAdornment-root .MuiBox-root': {
-                        color: '#000000',
-                        transition: 'color 160ms ease',
-                    },
-                    '& .MuiOutlinedInput-root.Mui-focused .MuiInputAdornment-root .MuiBox-root': {
-                        color: '#000000',
-                    },
-                }}
-                InputProps={
-                    leftIcon
-                        ? {
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <Box sx={{ display: 'inline-flex', color: 'text.secondary' }}>{leftIcon}</Box>
-                                </InputAdornment>
-                            ),
-                          }
-                        : undefined
-                }
-            />
-        </Box>
-    );
+	return (
+		<label className={'block'}>
+			<div className={'flex items-baseline justify-between mb-1.5'}>
+				<span className={'text-[0.7rem] font-semibold tracking-tight text-slate-700'}>
+					{label}
+					{required ? <span className={'text-danger ml-0.5'}>*</span> : null}
+				</span>
+			</div>
+			<div className={'group relative flex items-center rounded-2xl border border-slate-200 bg-white shadow-sm transition-transform duration-150 ease-out hover:-translate-y-0.5 hover:shadow-lg focus-within:-translate-y-0.5 focus-within:shadow-lg'}>
+				{leftIcon ? (
+					<span className={'pl-4 pr-2 text-slate-400 group-focus-within:text-slate-700'}>
+						{leftIcon}
+					</span>
+				) : null}
+				<input
+					className={'w-full bg-transparent outline-none text-sm text-slate-900 placeholder:text-slate-400 py-3.5 pr-4'}
+					type={type}
+					value={value}
+					onChange={(e) => onChange(e.target.value)}
+					placeholder={placeholder}
+					autoComplete={autoComplete}
+					required={required}
+				/>
+			</div>
+		</label>
+	);
 }
-

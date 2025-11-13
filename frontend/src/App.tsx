@@ -5,7 +5,7 @@ import AuthCard from "./components/AuthCard";
 import AuthTabs from "./components/AuthTabs";
 import TextField from "./components/TextField";
 import SubmitButton from "./components/SubmitButton";
-import Box from "@mui/material/Box";
+import EmailConfirmationNotice from "./components/EmailConfirmationNotice";
 
 export default function App() {
   const {
@@ -17,85 +17,59 @@ export default function App() {
     setMode,
     setField,
     handleSubmit,
+    pendingEmail,
+    resendConfirmation,
+    signOut,
   } = useAuth();
 
   if (sessionState === "checking") {
     return (
-      <Box sx={{ 
-        minHeight: '100vh', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        bgcolor: 'background.default', 
-        color: 'text.primary',
-        px: 2
-      }}>
-        <Box sx={{ 
-          animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite', 
-          fontSize: '0.9375rem', 
-          fontWeight: 500, 
-          letterSpacing: '0.025em',
-          textAlign: 'center'
-        }}>
+      <div className="min-h-screen flex items-center justify-center bg-surface-muted text-text-primary px-4">
+        <div className="text-sm font-medium tracking-[0.025em] text-center animate-pulse">
           Preparing your EduTrackr workspace...
-        </Box>
-      </Box>
+        </div>
+      </div>
+    );
+  }
+
+  if (sessionState === "pending_confirmation") {
+    return (
+      <EmailConfirmationNotice
+        email={pendingEmail || auth.email}
+        onResend={resendConfirmation}
+        onBack={signOut}
+      />
     );
   }
 
   if (sessionState === "authenticated") {
     return (
-      <Box sx={{ 
-        minHeight: '100vh', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        bgcolor: 'background.default', 
-        color: 'text.primary', 
-        px: 2
-      }}>
+      <div className="min-h-screen flex items-center justify-center bg-surface-muted text-text-primary px-4">
         <AuthCard
           title="Welcome to EduTrackr"
           subtitle="You are signed in. Next: connect session state and onboarding."
         >
-          <Box sx={{ 
-            fontSize: '0.875rem', 
-            color: 'text.secondary',
-            textAlign: 'center',
-            py: 1
-          }}>
+          <div className="text-sm text-text-secondary text-center py-1">
             This placeholder view confirms authentication flow is working.
-          </Box>
+          </div>
         </AuthCard>
-      </Box>
+      </div>
     );
   }
 
   return (
-    <Box sx={{ 
-      minHeight: '100vh', 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      bgcolor: 'background.default', 
-      color: 'text.primary', 
-      px: 2,
-      py: 3
-    }}>
-      <Box sx={{ position: 'relative', width: '100%', maxWidth: 560 }}>
+    <div className="min-h-screen flex items-center justify-center bg-surface-muted text-text-primary px-4 py-6">
+      <div className="relative w-full max-w-xl">
         <AuthCard
           title="EduTrackr"
           subtitle="Sign in or create your account to continue"
         >
-          <Box sx={{ mb: { xs: 3, sm: 4 } }}>
+          <div className="mb-4 sm:mb-5">
             <AuthTabs mode={mode} onChange={setMode} />
-          </Box>
-          <Box
-            component="form"
+          </div>
+          <form
             onSubmit={handleSubmit}
-            sx={{
-              '& > * + *': { mt: { xs: 3, sm: 3.5 } },
-            }}
+            className="space-y-4 sm:space-y-4"
           >
             <TextField
               label="Chapman Email"
@@ -107,18 +81,16 @@ export default function App() {
               required
               leftIcon={<FiMail size={16} />}
             />
-            <Box sx={{ mb: 1 }}>
-              <TextField
-                label="Password"
-                type="password"
-                value={auth.password}
-                onChange={(v) => setField("password", v)}
-                placeholder={mode === "sign_in" ? "Enter your password" : "Create a strong password"}
-                autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
-                required
-                leftIcon={<FiLock size={16} />}
-              />
-            </Box>
+            <TextField
+              label="Password"
+              type="password"
+              value={auth.password}
+              onChange={(v) => setField("password", v)}
+              placeholder={mode === "sign_in" ? "Enter your password" : "Create a strong password"}
+              autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
+              required
+              leftIcon={<FiLock size={16} />}
+            />
             {mode === "sign_up" ? (
               <TextField
                 label="Confirm Password"
@@ -132,22 +104,16 @@ export default function App() {
               />
             ) : null}
             {error ? (
-              <Box sx={{ 
-                fontSize: '0.875rem', 
-                color: 'error.main',
-                textAlign: 'center',
-                py: 1,
-                px: 2,
-                borderRadius: 2,
-                bgcolor: 'rgba(239, 68, 68, 0.1)'
-              }}>{error}</Box>
+              <div className="text-sm text-danger text-center py-2 px-3 rounded-lg bg-[rgba(239,68,68,0.08)]">
+                {error}
+              </div>
             ) : null}
             <SubmitButton loading={loading}>
               {mode === "sign_in" ? "Sign In" : "Create Account"}
             </SubmitButton>
-          </Box>
+          </form>
         </AuthCard>
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 }

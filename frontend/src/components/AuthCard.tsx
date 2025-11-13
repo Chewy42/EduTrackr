@@ -1,9 +1,4 @@
-import React from "react";
-import Card from "@mui/material/Card";
-import CardContent from "@mui/material/CardContent";
-import Typography from "@mui/material/Typography";
-import Divider from "@mui/material/Divider";
-import Box from "@mui/material/Box";
+import React from 'react';
 
 type AuthCardProps = {
 	title: string;
@@ -13,88 +8,39 @@ type AuthCardProps = {
 };
 
 export default function AuthCard({ title, subtitle, children, footer }: AuthCardProps) {
-    return (
-        <Box sx={{ 
-            width: '100%', 
-            maxWidth: 560, 
-            mx: 'auto',
-            p: { xs: 2, sm: 3 }
-        }}>
-            <Card 
-                elevation={0} 
-                sx={{ 
-                    bgcolor: 'background.paper',
-                    borderRadius: 2,
-                    overflow: 'visible',
-                    position: 'relative'
-                }}
-            >
-                <CardContent sx={{ 
-                    pb: 3, 
-                    px: { xs: 4, sm: 6 }, 
-                    pt: { xs: 6, sm: 8 },
-                    position: 'relative'
-                }}>
-                    <Box sx={{ textAlign: 'center', mb: 2 }}>
-                        <Typography 
-                            variant="h4" 
-                            component="h1" 
-                            gutterBottom
-                            sx={{ 
-                                fontWeight: 700,
-                                color: 'text.primary',
-                                mb: 1.5,
-                                letterSpacing: '-0.02em'
-                            }}
-                        >
-                            {title}
-                        </Typography>
-                        {subtitle ? (
-                            <Typography 
-                                variant="body2" 
-                                color="text.secondary"
-                                sx={{ 
-                                    maxWidth: 420,
-                                    mx: 'auto',
-                                    lineHeight: 1.6,
-                                    fontWeight: 400
-                                }}
-                            >
-                                {subtitle}
-                            </Typography>
-                        ) : null}
-                    </Box>
-                </CardContent>
-                
-                <Divider sx={{ mx: { xs: 4, sm: 6 } }} />
-                
-                <CardContent sx={{ 
-                    pt: { xs: 5, sm: 6 }, 
-                    px: { xs: 4, sm: 6 }, 
-                    pb: { xs: 5, sm: 6 }
-                }}>
-                    <Box sx={{
-                        '& > * + *': { mt: 3.5 },
-                    }}>
-                        {children}
-                    </Box>
-                </CardContent>
-                
-                {footer ? (
-                    <>
-                        <Divider sx={{ mx: { xs: 4, sm: 6 } }} />
-                        <CardContent sx={{ 
-                            px: { xs: 4, sm: 6 }, 
-                            pb: { xs: 6, sm: 8 },
-                            pt: { xs: 4, sm: 5 }
-                        }}>
-                            <Box sx={{ textAlign: 'center' }}>
-                                {footer}
-                            </Box>
-                        </CardContent>
-                    </>
-                ) : null}
-            </Card>
-        </Box>
-    );
+	return (
+		<div className={'w-full max-w-xl mx-auto px-3 sm:px-4'}>
+			<div className={'relative bg-surface rounded-3xl shadow-card border border-slate-100/70'}>
+				<div className={'px-8 sm:px-10 pt-10 pb-6 text-center'}>
+					<h1 className={'text-2xl sm:text-3xl font-bold tracking-tight text-text-primary mb-2.5'}>
+						{title}
+					</h1>
+					{subtitle ? (
+						<p className={'mx-auto max-w-md text-sm sm:text-[0.95rem] leading-relaxed text-text-secondary'}>
+							{subtitle}
+						</p>
+					) : null}
+				</div>
+
+				<div className={'h-px bg-slate-200/70 mx-8 sm:mx-10'} />
+
+				<div className={'px-8 sm:px-10 pt-8 pb-8 sm:pb-10'}>
+					<div className={'space-y-6'}>
+						{children}
+					</div>
+				</div>
+
+				{footer ? (
+					<>
+						<div className={'h-px bg-slate-200/70 mx-8 sm:mx-10'} />
+						<div className={'px-8 sm:px-10 pt-5 pb-8 sm:pt-6 sm:pb-10'}>
+							<div className={'text-center text-sm text-text-secondary'}>
+								{footer}
+							</div>
+						</div>
+					</>
+				) : null}
+			</div>
+		</div>
+	);
 }
