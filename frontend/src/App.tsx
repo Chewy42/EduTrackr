@@ -1,4 +1,5 @@
 import React from "react";
+import { useLocation } from "react-router-dom";
 import { FiMail, FiLock } from "react-icons/fi";
 import { useAuth } from "./auth/AuthContext";
 import AuthCard from "./components/AuthCard";
@@ -6,14 +7,18 @@ import AuthTabs from "./components/AuthTabs";
 import TextField from "./components/TextField";
 import SubmitButton from "./components/SubmitButton";
 import EmailConfirmationNotice from "./components/EmailConfirmationNotice";
+import Sidebar from "./components/Sidebar";
+import ProgramEvaluationUpload from "./components/ProgramEvaluationUpload";
 
 export default function App() {
+  const location = useLocation();
   const {
     sessionState,
     mode,
     auth,
     loading,
     error,
+    preferences,
     setMode,
     setField,
     handleSubmit,
@@ -43,14 +48,50 @@ export default function App() {
   }
 
   if (sessionState === "authenticated") {
+    if (!preferences.hasProgramEvaluation) {
+      return (
+        <div className="min-h-screen h-[100vh] w-[100vw] flex flex-row items-center justify-center bg-surface-muted text-text-primary">
+          <Sidebar />
+          <AuthCard
+            title="Upload your program evaluation"
+            subtitle="Start by uploading your official program evaluation PDF so EduTrackr can understand your path."
+          >
+            <ProgramEvaluationUpload />
+          </AuthCard>
+        </div>
+      );
+    }
+    let title = "Welcome to EduTrackr";
+    let subtitle = "You are signed in. Next: connect session state and onboarding.";
+    let body = "This placeholder view confirms authentication flow is working.";
+
+    if (location.pathname === "/progress-page") {
+      title = "Your Progress";
+      subtitle = "Track how you’re doing across courses and goals.";
+      body = "Progress analytics and insights will appear here.";
+    } else if (location.pathname === "/schedule-gen-home") {
+      title = "Generate Your Schedule";
+      subtitle = "Quickly build a balanced term around your preferences.";
+      body = "Schedule generation tools and recommendations will appear here.";
+    } else if (location.pathname === "/exploration-assistant") {
+      title = "Explore Your Options";
+      subtitle = "Discover courses, paths, and opportunities that fit you.";
+      body = "Exploration tools and guidance will appear here.";
+    } else if (location.pathname === "/settings") {
+      title = "Settings";
+      subtitle = "Adjust your EduTrackr experience.";
+      body = "Account and personalization settings will appear here.";
+    }
+
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-muted text-text-primary px-4">
+      <div className="min-h-screen h-[100vh] w-[100vw] flex flex-row items-center justify-center bg-surface-muted text-text-primary">
+        <Sidebar />
         <AuthCard
-          title="Welcome to EduTrackr"
-          subtitle="You are signed in. Next: connect session state and onboarding."
+          title={title}
+          subtitle={subtitle}
         >
           <div className="text-sm text-text-secondary text-center py-1">
-            This placeholder view confirms authentication flow is working.
+            {body}
           </div>
         </AuthCard>
       </div>
@@ -67,10 +108,7 @@ export default function App() {
           <div className="mb-4 sm:mb-5">
             <AuthTabs mode={mode} onChange={setMode} />
           </div>
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-4 sm:space-y-4"
-          >
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-4">
             <TextField
               label="Chapman Email"
               type="email"
@@ -86,8 +124,14 @@ export default function App() {
               type="password"
               value={auth.password}
               onChange={(v) => setField("password", v)}
-              placeholder={mode === "sign_in" ? "Enter your password" : "Create a strong password"}
-              autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
+              placeholder={
+                mode === "sign_in"
+                  ? "Enter your password"
+                  : "Create a strong password"
+              }
+              autoComplete={
+                mode === "sign_in" ? "current-password" : "new-password"
+              }
               required
               leftIcon={<FiLock size={16} />}
             />

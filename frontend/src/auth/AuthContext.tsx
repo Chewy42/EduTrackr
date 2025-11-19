@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
 export type AuthMode = 'sign_in' | 'sign_up'
 
@@ -13,6 +13,7 @@ export type SessionState = 'checking' | 'unauthenticated' | 'authenticated' | 'p
 export type UserPreferences = {
   theme?: 'light' | 'dark'
   landingView?: 'dashboard' | 'schedule' | 'explore'
+  hasProgramEvaluation?: boolean
 }
 
 export type AuthContextValue = {
@@ -30,6 +31,7 @@ export type AuthContextValue = {
   refreshPreferences: () => Promise<void>
   resendConfirmation: () => Promise<void>
   signOut: () => void
+  mergePreferences: (patch: Partial<UserPreferences>) => void
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -93,6 +95,16 @@ export function AuthProvider({ children }: Props) {
       window.localStorage.setItem(LOCAL_PREF_KEY, JSON.stringify(next))
     }
   }
+
+  const mergePreferences = useCallback((patch: Partial<UserPreferences>) => {
+    setPreferences((prev) => {
+      const next = { ...prev, ...patch }
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(LOCAL_PREF_KEY, JSON.stringify(next))
+      }
+      return next
+    })
+  }, [])
 
   const refreshPreferences = async () => {
     if (!jwt) return
@@ -215,8 +227,9 @@ export function AuthProvider({ children }: Props) {
       refreshPreferences,
       resendConfirmation,
       signOut,
+      mergePreferences,
     }),
-    [sessionState, mode, auth, loading, error, preferences, jwt, pendingEmail]
+    [sessionState, mode, auth, loading, error, preferences, jwt, pendingEmail, mergePreferences]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

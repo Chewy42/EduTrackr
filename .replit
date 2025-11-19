@@ -4,31 +4,18 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["docker_27"]
 
 [workflows]
 runButton = "Dev"
 
 [[workflows.workflow]]
 name = "Dev"
-author = "agent"
+author = "Chewy42"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm run dev"
-waitForPort = 5173
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-[[workflows.workflow]]
-name = "DevDocker"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run dev:docker"
-waitForPort = 5173
+waitForPort = 80
 
 [workflows.workflow.metadata]
 outputType = "webview"
@@ -40,6 +27,8 @@ externalPort = 5000
 [[ports]]
 localPort = 5173
 externalPort = 80
+
+
 
 [deployment]
 deploymentTarget = "autoscale"
