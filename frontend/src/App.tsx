@@ -9,6 +9,7 @@ import SubmitButton from "./components/SubmitButton";
 import EmailConfirmationNotice from "./components/EmailConfirmationNotice";
 import Sidebar from "./components/Sidebar";
 import ProgramEvaluationUpload from "./components/ProgramEvaluationUpload";
+import ProgramEvaluationViewer from "./components/ProgramEvaluationViewer";
 
 export default function App() {
   const location = useLocation();
@@ -50,50 +51,68 @@ export default function App() {
   if (sessionState === "authenticated") {
     if (!preferences.hasProgramEvaluation) {
       return (
-        <div className="min-h-screen h-[100vh] w-[100vw] flex flex-row items-center justify-center bg-surface-muted text-text-primary">
+        <div className="flex h-screen w-screen overflow-hidden bg-surface-muted text-text-primary">
           <Sidebar />
-          <AuthCard
-            title="Upload your program evaluation"
-            subtitle="Start by uploading your official program evaluation PDF so EduTrackr can understand your path."
-          >
-            <ProgramEvaluationUpload />
-          </AuthCard>
+          <main className="flex-1 h-full overflow-y-auto flex items-center justify-center p-4 min-w-0">
+            <AuthCard
+              title="Upload your program evaluation"
+              subtitle="Start by uploading your official program evaluation PDF so EduTrackr can understand your path."
+            >
+              <ProgramEvaluationUpload />
+            </AuthCard>
+          </main>
         </div>
       );
     }
     let title = "Welcome to EduTrackr";
     let subtitle = "You are signed in. Next: connect session state and onboarding.";
-    let body = "This placeholder view confirms authentication flow is working.";
+    let body: React.ReactNode = (
+      <div className="text-sm text-text-secondary text-center py-1">
+        This placeholder view confirms authentication flow is working.
+      </div>
+    );
 
     if (location.pathname === "/progress-page") {
       title = "Your Progress";
       subtitle = "Track how you’re doing across courses and goals.";
-      body = "Progress analytics and insights will appear here.";
+      body = (
+        <div className="text-sm text-text-secondary text-center py-1">
+          Progress analytics and insights will appear here.
+        </div>
+      );
     } else if (location.pathname === "/schedule-gen-home") {
       title = "Generate Your Schedule";
       subtitle = "Quickly build a balanced term around your preferences.";
-      body = "Schedule generation tools and recommendations will appear here.";
+      body = (
+        <div className="text-sm text-text-secondary text-center py-1">
+          Schedule generation tools and recommendations will appear here.
+        </div>
+      );
     } else if (location.pathname === "/exploration-assistant") {
       title = "Explore Your Options";
       subtitle = "Discover courses, paths, and opportunities that fit you.";
-      body = "Exploration tools and guidance will appear here.";
+      body = (
+        <div className="text-sm text-text-secondary text-center py-1">
+          Exploration tools and guidance will appear here.
+        </div>
+      );
     } else if (location.pathname === "/settings") {
       title = "Settings";
       subtitle = "Adjust your EduTrackr experience.";
-      body = "Account and personalization settings will appear here.";
+      body = <ProgramEvaluationViewer />;
     }
 
     return (
-      <div className="min-h-screen h-[100vh] w-[100vw] flex flex-row items-center justify-center bg-surface-muted text-text-primary">
+      <div className="flex h-screen w-screen overflow-hidden bg-surface-muted text-text-primary">
         <Sidebar />
-        <AuthCard
-          title={title}
-          subtitle={subtitle}
-        >
-          <div className="text-sm text-text-secondary text-center py-1">
+        <main className="flex-1 h-full overflow-y-auto flex items-center justify-center p-4 min-w-0">
+          <AuthCard
+            title={title}
+            subtitle={subtitle}
+          >
             {body}
-          </div>
-        </AuthCard>
+          </AuthCard>
+        </main>
       </div>
     );
   }

@@ -23,6 +23,9 @@ export default function ProgramEvaluationUpload() {
       return;
     }
     const candidate = files[0];
+    if (!candidate) {
+      return;
+    }
     if (!candidate.name.toLowerCase().endsWith(".pdf")) {
       setError("Upload a single PDF file.");
       setFile(null);
@@ -155,13 +158,13 @@ export default function ProgramEvaluationUpload() {
         className="hidden"
         onChange={handleFileInputChange}
       />
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <button
           type="button"
           onClick={handleUpload}
           disabled={!hasSelectedFile || uploadState === "uploading"}
           className={[
-            "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium shadow-sm transition-colors duration-200",
+            "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium shadow-sm transition-colors duration-200 w-full sm:w-auto",
             hasSelectedFile
               ? "bg-blue-600 text-white hover:bg-blue-500"
               : "bg-blue-200 text-blue-50 cursor-not-allowed",
@@ -172,7 +175,7 @@ export default function ProgramEvaluationUpload() {
         <button
           type="button"
           onClick={handleOpenPreview}
-          className="inline-flex items-center rounded-xl bg-white px-3 py-2 text-xs font-medium text-text-secondary shadow-sm ring-1 ring-slate-200 transition-colors duration-200 hover:text-text-primary"
+          className="inline-flex items-center justify-center rounded-xl bg-white px-3 py-2 text-xs font-medium text-text-secondary shadow-sm ring-1 ring-slate-200 transition-colors duration-200 hover:text-text-primary w-full sm:w-auto"
         >
           <FiEye className="mr-2 text-sm" />
           Open program evaluation

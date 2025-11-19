@@ -1,70 +1,20 @@
-from flask import Flask, jsonify, request, send_file
-from flask_cors import CORS
-import os
-from datetime import datetime, timedelta
+from datetime import datetime
+from datetime import timedelta
 from typing import Any, Dict
-import requests
+
+import os
 import jwt as pyjwt
+import requests
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+
+from app.routes.program_evaluations import program_evaluations_bp
+from app.services.auth_tokens import decode_app_token_from_request, issue_app_token
+from app.services.program_evaluation_store import has_program_evaluation
+from app.services.supabase_client import supabase_request
 
 app = Flask(__name__)
 CORS(app)
-
-JWT_SECRET = os.getenv('JWT_SECRET_KEY', 'dev-secret-key-change-in-production')
-JWT_ALGORITHM = 'HS256'
-SUPABASE_URL = (os.getenv('SUPABASE_URL') or '').rstrip('/')
-SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY')
-SUPABASE_SERVICE_KEY = os.getenv('SUPABASE_ACCESS_TOKEN')
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROGRAM_EVALUATION_DIR = os.path.join(BASE_DIR, 'tmp', 'program_evaluations')
-
-
-def ensure_supabase_env() -> None:
-    missing = []
-    if not SUPABASE_URL:
-        missing.append('SUPABASE_URL')
-    if not SUPABASE_ANON_KEY:
-        missing.append('SUPABASE_ANON_KEY')
-    if not SUPABASE_SERVICE_KEY:
-        missing.append('SUPABASE_ACCESS_TOKEN')
-    if missing:
-        raise RuntimeError(f"Missing Supabase configuration: {', '.join(missing)}")
-
-
-def supabase_headers() -> Dict[str, str]:
-    return {
-        'apikey': SUPABASE_ANON_KEY or '',
-        'Authorization': f"Bearer {SUPABASE_SERVICE_KEY}",
-        'Content-Type': 'application/json'
-    }
-
-
-def supabase_request(method: str, path: str, **kwargs: Any) -> requests.Response:
-    ensure_supabase_env()
-    url = f"{SUPABASE_URL}{path}"
-    headers = kwargs.pop('headers', {})
-    merged_headers = {**supabase_headers(), **headers}
-    timeout = kwargs.pop('timeout', 30)
-    return requests.request(method=method.upper(), url=url, headers=merged_headers, timeout=timeout, **kwargs)
-
-
-def issue_app_token(email: str, stay_logged_in: bool = False) -> str:
-    ttl = timedelta(days=30 if stay_logged_in else 7)
-    payload = {
-        'email': email,
-        'exp': datetime.utcnow() + ttl
-    }
-    return pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-
-def program_evaluation_path_for_email(email: str) -> str:
-    os.makedirs(PROGRAM_EVALUATION_DIR, exist_ok=True)
-    safe_email = email.replace('@', '_at_').replace('/', '_')
-    return os.path.join(PROGRAM_EVALUATION_DIR, f'{safe_email}.pdf')
-
-
-def has_program_evaluation(email: str) -> bool:
-    path = program_evaluation_path_for_email(email)
-    return os.path.exists(path)
 
 
 def build_preferences(email: str) -> Dict[str, Any]:
@@ -74,13 +24,6 @@ def build_preferences(email: str) -> Dict[str, Any]:
         'hasProgramEvaluation': has_program_evaluation(email)
     }
 
-
-def decode_app_token_from_request() -> Dict[str, Any]:
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Bearer '):
-        raise pyjwt.InvalidTokenError('Missing bearer token')
-    token = auth_header.split(' ')[1]
-    return pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -220,37 +163,7 @@ def get_preferences():
         return jsonify({'error': 'Invalid token'}), 401
 
 
-@app.route('/program-evaluations', methods=['POST', 'GET'])
-def program_evaluations():
-    try:
-        payload = decode_app_token_from_request()
-        email = payload.get('email', '')
-        if not email:
-            return jsonify({'error': 'Invalid token'}), 401
-    except pyjwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token expired'}), 401
-    except Exception:
-        return jsonify({'error': 'Unauthorized'}), 401
-
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            return jsonify({'error': 'File is required.'}), 400
-        file = request.files['file']
-        if not file or file.filename == '':
-            return jsonify({'error': 'File is required.'}), 400
-        filename = file.filename
-        if not filename.lower().endswith('.pdf'):
-            return jsonify({'error': 'Only PDF files are supported.'}), 400
-
-        path = program_evaluation_path_for_email(email)
-        file.save(path)
-
-        return jsonify({'status': 'ok', 'filename': filename}), 201
-
-    path = program_evaluation_path_for_email(email)
-    if not os.path.exists(path):
-        return jsonify({'error': 'No program evaluation on file.'}), 404
-    return send_file(path, mimetype='application/pdf')
+app.register_blueprint(program_evaluations_bp)
 
 if __name__ == '__main__':
     explicit_backend_port = os.getenv('SERVER_PORT')
