@@ -5,7 +5,8 @@ import requests
 
 SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_ACCESS_TOKEN")
+# Prefer SERVICE_ROLE_KEY for backend admin access, fallback to ACCESS_TOKEN
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ACCESS_TOKEN")
 
 
 def supabase_configured() -> bool:
@@ -20,7 +21,7 @@ def ensure_supabase_env() -> None:
         if not SUPABASE_ANON_KEY:
             missing.append("SUPABASE_ANON_KEY")
         if not SUPABASE_SERVICE_KEY:
-            missing.append("SUPABASE_ACCESS_TOKEN")
+            missing.append("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ACCESS_TOKEN")
         raise RuntimeError(f"Missing Supabase configuration: {', '.join(missing)}")
 
 

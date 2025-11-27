@@ -10,6 +10,9 @@ import EmailConfirmationNotice from "./components/EmailConfirmationNotice";
 import Sidebar from "./components/Sidebar";
 import ProgramEvaluationUpload from "./components/ProgramEvaluationUpload";
 import ProgramEvaluationViewer from "./components/ProgramEvaluationViewer";
+import OnboardingChat from "./components/OnboardingChat";
+import ExploreChatLayout from "./components/ExploreChatLayout";
+import { ProgressPage } from "./components/progress";
 
 export default function App() {
   const location = useLocation();
@@ -53,17 +56,48 @@ export default function App() {
       return (
         <div className="flex h-screen w-screen overflow-hidden bg-surface-muted text-text-primary">
           <Sidebar />
-          <main className="flex-1 h-full overflow-y-auto flex items-center justify-center p-4 min-w-0">
-            <AuthCard
-              title="Upload your program evaluation"
-              subtitle="Start by uploading your official program evaluation PDF so EduTrackr can understand your path."
-            >
-              <ProgramEvaluationUpload />
-            </AuthCard>
+          <main className="flex-1 h-full overflow-y-auto p-4 min-w-0">
+            <div className="min-h-full flex items-center justify-center">
+              <AuthCard
+                title="Upload your program evaluation"
+                subtitle="Start by uploading your official program evaluation PDF so EduTrackr can understand your path."
+                maxWidth="max-w-7xl"
+              >
+                <ProgramEvaluationUpload />
+              </AuthCard>
+            </div>
           </main>
         </div>
       );
     }
+
+    if (!preferences.onboardingComplete) {
+      return <OnboardingChat />;
+    }
+
+    // Progress page uses full-width layout
+    if (location.pathname === "/progress-page") {
+      return (
+        <div className="flex h-screen w-screen overflow-hidden bg-surface-muted text-text-primary">
+          <Sidebar />
+          <main className="flex-1 h-full overflow-y-auto min-w-0">
+            <ProgressPage />
+          </main>
+        </div>
+      );
+    }
+
+    if (location.pathname === "/exploration-assistant") {
+      return (
+        <div className="flex h-screen w-screen overflow-hidden bg-surface-muted text-text-primary">
+          <Sidebar />
+          <main className="flex-1 h-full overflow-y-auto min-w-0">
+            <ExploreChatLayout />
+          </main>
+        </div>
+      );
+    }
+
     let title = "Welcome to EduTrackr";
     let subtitle = "You are signed in. Next: connect session state and onboarding.";
     let body: React.ReactNode = (
@@ -72,28 +106,12 @@ export default function App() {
       </div>
     );
 
-    if (location.pathname === "/progress-page") {
-      title = "Your Progress";
-      subtitle = "Track how you’re doing across courses and goals.";
-      body = (
-        <div className="text-sm text-text-secondary text-center py-1">
-          Progress analytics and insights will appear here.
-        </div>
-      );
-    } else if (location.pathname === "/schedule-gen-home") {
+    if (location.pathname === "/schedule-gen-home") {
       title = "Generate Your Schedule";
       subtitle = "Quickly build a balanced term around your preferences.";
       body = (
         <div className="text-sm text-text-secondary text-center py-1">
           Schedule generation tools and recommendations will appear here.
-        </div>
-      );
-    } else if (location.pathname === "/exploration-assistant") {
-      title = "Explore Your Options";
-      subtitle = "Discover courses, paths, and opportunities that fit you.";
-      body = (
-        <div className="text-sm text-text-secondary text-center py-1">
-          Exploration tools and guidance will appear here.
         </div>
       );
     } else if (location.pathname === "/settings") {
@@ -105,13 +123,15 @@ export default function App() {
     return (
       <div className="flex h-screen w-screen overflow-hidden bg-surface-muted text-text-primary">
         <Sidebar />
-        <main className="flex-1 h-full overflow-y-auto flex items-center justify-center p-4 min-w-0">
-          <AuthCard
-            title={title}
-            subtitle={subtitle}
-          >
-            {body}
-          </AuthCard>
+        <main className="flex-1 h-full overflow-y-auto p-4 min-w-0">
+          <div className="min-h-full flex items-center justify-center">
+            <AuthCard
+              title={title}
+              subtitle={subtitle}
+            >
+              {body}
+            </AuthCard>
+          </div>
         </main>
       </div>
     );

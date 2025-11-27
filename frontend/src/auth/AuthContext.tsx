@@ -14,6 +14,7 @@ export type UserPreferences = {
   theme?: 'light' | 'dark'
   landingView?: 'dashboard' | 'schedule' | 'explore'
   hasProgramEvaluation?: boolean
+  onboardingComplete?: boolean
 }
 
 export type AuthContextValue = {
@@ -57,11 +58,29 @@ export function AuthProvider({ children }: Props) {
     const storedToken = typeof window !== 'undefined' ? window.localStorage.getItem(LOCAL_SESSION_KEY) : null
     const storedPrefs = typeof window !== 'undefined' ? window.localStorage.getItem(LOCAL_PREF_KEY) : null
 
-    if (storedToken) {
-      setJwt(storedToken)
-      setSessionState('authenticated')
+    // Check URL hash for access_token (Supabase redirect)
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1))
+      const accessToken = hashParams.get('access_token')
+      if (accessToken) {
+        setJwt(accessToken)
+        setSessionState('authenticated')
+        window.localStorage.setItem(LOCAL_SESSION_KEY, accessToken)
+        // Clear hash
+        window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      } else if (storedToken) {
+        setJwt(storedToken)
+        setSessionState('authenticated')
+      } else {
+        setSessionState('unauthenticated')
+      }
     } else {
-      setSessionState('unauthenticated')
+      if (storedToken) {
+        setJwt(storedToken)
+        setSessionState('authenticated')
+      } else {
+        setSessionState('unauthenticated')
+      }
     }
 
     if (storedPrefs) {
@@ -96,6 +115,17 @@ export function AuthProvider({ children }: Props) {
     }
   }
 
+  const signOut = () => {
+    setSessionState('unauthenticated')
+    persistJwt(null)
+    setAuth({ email: '', password: '', confirmPassword: '' })
+    setPreferences({})
+    setPendingEmail(null)
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(LOCAL_PREF_KEY)
+    }
+  }
+
   const mergePreferences = useCallback((patch: Partial<UserPreferences>) => {
     setPreferences((prev) => {
       const next = { ...prev, ...patch }
@@ -106,7 +136,7 @@ export function AuthProvider({ children }: Props) {
     })
   }, [])
 
-  const refreshPreferences = async () => {
+  const refreshPreferences = useCallback(async () => {
     if (!jwt) return
 
     try {
@@ -120,10 +150,18 @@ export function AuthProvider({ children }: Props) {
       if (res.ok) {
         const prefs = await res.json() as UserPreferences
         persistPreferences(prefs)
+      } else if (res.status === 401) {
+        signOut()
       }
     } catch {
     }
-  }
+  }, [jwt])
+
+  useEffect(() => {
+    if (jwt) {
+      refreshPreferences()
+    }
+  }, [jwt, refreshPreferences])
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -197,17 +235,6 @@ export function AuthProvider({ children }: Props) {
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       throw new Error(data.error || 'Unable to resend confirmation email.')
-    }
-  }
-
-  const signOut = () => {
-    setSessionState('unauthenticated')
-    persistJwt(null)
-    setAuth({ email: '', password: '', confirmPassword: '' })
-    setPreferences({})
-    setPendingEmail(null)
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(LOCAL_PREF_KEY)
     }
   }
 

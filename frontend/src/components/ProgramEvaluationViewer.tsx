@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FiEye, FiRefreshCw, FiFileText, FiX } from "react-icons/fi";
+import { FiEye, FiRefreshCw, FiFileText, FiX, FiUploadCloud } from "react-icons/fi";
 import { useAuth } from "../auth/AuthContext";
+import ProgramEvaluationUpload from "./ProgramEvaluationUpload";
 
 type ParsedPayload = {
   email: string;
@@ -30,6 +31,7 @@ export default function ProgramEvaluationViewer() {
   const [parsed, setParsed] = useState<ParsedPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [replaceModalOpen, setReplaceModalOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [modalLoading, setModalLoading] = useState(false);
 
@@ -147,22 +149,55 @@ export default function ProgramEvaluationViewer() {
           <div className="text-xs text-text-secondary">
             View the stored PDF in-place. Scroll inside the modal to read it fully.
           </div>
-          <button
-            type="button"
-            onClick={openPdfModal}
-            disabled={loadState !== "ready"}
-            className={[
-              "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors duration-150",
-              loadState === "ready"
-                ? "bg-blue-600 text-white shadow-sm hover:bg-blue-500"
-                : "bg-blue-200 text-blue-50 cursor-not-allowed",
-            ].join(" ")}
-          >
-            <FiEye className="text-sm" />
-            View PDF
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setReplaceModalOpen(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold bg-white text-slate-700 ring-1 ring-slate-200 shadow-sm hover:bg-slate-50 transition-colors duration-150"
+            >
+              <FiUploadCloud className="text-sm" />
+              Replace PDF
+            </button>
+            <button
+              type="button"
+              onClick={openPdfModal}
+              disabled={loadState !== "ready"}
+              className={[
+                "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors duration-150",
+                loadState === "ready"
+                  ? "bg-blue-600 text-white shadow-sm hover:bg-blue-500"
+                  : "bg-blue-200 text-blue-50 cursor-not-allowed",
+              ].join(" ")}
+            >
+              <FiEye className="text-sm" />
+              View PDF
+            </button>
+          </div>
         </div>
       </div>
+
+      {replaceModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
+          <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200 p-6">
+            <button
+              type="button"
+              onClick={() => setReplaceModalOpen(false)}
+              className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full cursor-pointer transition-transform duration-150 hover:scale-110 active:scale-95"
+              aria-label="Close"
+            >
+              <FiX className="text-lg text-text-primary" />
+            </button>
+            <h2 className="text-lg font-semibold mb-4">Replace Program Evaluation</h2>
+            <p className="text-sm text-slate-500 mb-6">
+              Uploading a new evaluation will reset your onboarding progress and chat history.
+            </p>
+            <ProgramEvaluationUpload onSuccess={() => {
+               setReplaceModalOpen(false);
+               window.location.href = "/";
+            }} />
+          </div>
+        </div>
+      ) : null}
 
       {modalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">

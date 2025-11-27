@@ -1,6 +1,6 @@
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, IO
 
 from pypdf import PdfReader
 
@@ -29,8 +29,8 @@ GPA_LINE_PATTERN = re.compile(
 )
 
 
-def extract_text_from_pdf(file_path: str) -> str:
-    reader = PdfReader(file_path)
+def extract_text_from_pdf(file_source: Union[str, IO]) -> str:
+    reader = PdfReader(file_source)
     text_parts: List[str] = []
     for page in reader.pages:
         text_parts.append(page.extract_text() or "")
@@ -177,7 +177,47 @@ def _parse_credit_requirements(lines: List[str]) -> List[Dict[str, Any]]:
     return requirements
 
 
-def _parse_gpa(lines: List[str], text: str) -> Dict[str, Any]:
+def _compute_overall_gpa_from_courses(courses: List[Dict[str, Any]]) -> Optional[float]:
+    """Fallback overall GPA computed directly from completed courses.
+
+    Uses the same 4.0 scale mapping as the frontend GPA trend chart.
+    Returns None if there are no graded, credit-bearing courses.
+    """
+
+    grade_points: Dict[str, float] = {
+        "A+": 4.0,
+        "A": 4.0,
+        "A-": 3.7,
+        "B+": 3.3,
+        "B": 3.0,
+        "B-": 2.7,
+        "C+": 2.3,
+        "C": 2.0,
+        "C-": 1.7,
+        "D+": 1.3,
+        "D": 1.0,
+        "D-": 0.7,
+        "F": 0.0,
+    }
+
+    total_points = 0.0
+    total_credits = 0.0
+
+    for course in courses:
+        grade = course.get("grade")
+        credits = float(course.get("credits") or 0)
+        if not grade or grade not in grade_points or credits <= 0:
+            continue
+        total_points += grade_points[grade] * credits
+        total_credits += credits
+
+    if total_credits <= 0:
+        return None
+
+    return total_points / total_credits
+
+
+def _parse_gpa(lines: List[str], text: str, courses: List[Dict[str, Any]]) -> Dict[str, Any]:
     gpa: Dict[str, Any] = {}
 
     overall_match = re.search(r"Overall GPA[:\s]*([\d\.]+)", text)
@@ -202,17 +242,25 @@ def _parse_gpa(lines: List[str], text: str) -> Dict[str, Any]:
                 gpa["overall"] = completed
             elif "overall" not in gpa:
                 gpa["overall"] = completed
+
+    # Fallback: if we still don't have an overall GPA, derive it directly
+    # from the completed course list so the dashboard always has a value.
+    if "overall" not in gpa:
+        computed_overall = _compute_overall_gpa_from_courses(courses)
+        if computed_overall is not None:
+            gpa["overall"] = computed_overall
+
     return gpa
 
 
-def parse_program_evaluation(file_path: str) -> Dict[str, Any]:
-    text = extract_text_from_pdf(file_path)
+def parse_program_evaluation(file_source: Union[str, IO]) -> Dict[str, Any]:
+    text = extract_text_from_pdf(file_source)
     lines = _split_lines(text)
 
     student_info = _parse_student_info(lines, text)
     courses = _parse_courses(lines)
     credit_requirements = _parse_credit_requirements(lines)
-    gpa = _parse_gpa(lines, text)
+    gpa = _parse_gpa(lines, text, courses)
 
     mastery: Dict[str, str] = {}
     if "Thesis Defense" in text:

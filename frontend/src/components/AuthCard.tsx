@@ -5,36 +5,37 @@ type AuthCardProps = {
 	subtitle?: string;
 	children: React.ReactNode;
 	footer?: React.ReactNode;
+    maxWidth?: string;
 };
 
-export default function AuthCard({ title, subtitle, children, footer }: AuthCardProps) {
+export default function AuthCard({ title, subtitle, children, footer, maxWidth = "max-w-xl" }: AuthCardProps) {
 	return (
-		<div className={'w-full max-w-xl mx-auto px-4 sm:px-4'}>
-			<div className={'relative bg-surface rounded-3xl shadow-card border border-slate-100/70'}>
-				<div className={'px-5 pt-8 pb-6 sm:px-10 sm:pt-10 text-center'}>
-					<h1 className={'text-2xl sm:text-3xl font-bold tracking-tight text-text-primary mb-2.5'}>
+		<div className={`w-full ${maxWidth} mx-auto px-4 sm:px-6`}>
+			<div className={'relative bg-surface rounded-[2rem] shadow-card border border-slate-100/70'}>
+				<div className={'px-6 pt-10 pb-8 sm:px-12 sm:pt-12 text-center'}>
+					<h1 className={'text-3xl sm:text-4xl font-extrabold tracking-tight text-text-primary mb-4'}>
 						{title}
 					</h1>
 					{subtitle ? (
-						<p className={'mx-auto max-w-md text-sm sm:text-[0.95rem] leading-relaxed text-text-secondary'}>
+						<p className={'mx-auto max-w-2xl text-base sm:text-lg leading-relaxed text-text-secondary'}>
 							{subtitle}
 						</p>
 					) : null}
 				</div>
 
-				<div className={'h-px bg-slate-200/70 mx-5 sm:mx-10'} />
+				<div className={'h-px bg-slate-200/70 mx-6 sm:mx-12'} />
 
-				<div className={'px-5 pt-8 pb-8 sm:px-10 sm:pb-10'}>
-					<div className={'space-y-6'}>
+				<div className={'px-6 py-8 sm:px-12 sm:py-12'}>
+					<div className={'space-y-8'}>
 						{children}
 					</div>
 				</div>
 
 				{footer ? (
 					<>
-						<div className={'h-px bg-slate-200/70 mx-5 sm:mx-10'} />
-						<div className={'px-5 pt-5 pb-8 sm:px-10 sm:pt-6 sm:pb-10'}>
-							<div className={'text-center text-sm text-text-secondary'}>
+						<div className={'h-px bg-slate-200/70 mx-6 sm:mx-12'} />
+						<div className={'px-6 pt-6 pb-8 sm:px-12 sm:pt-8 sm:pb-12'}>
+							<div className={'text-center text-base text-text-secondary'}>
 								{footer}
 							</div>
 						</div>

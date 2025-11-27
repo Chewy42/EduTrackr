@@ -14,6 +14,7 @@ from app.services.program_evaluation_store import (
     save_uploaded_pdf,
 )
 from app.services.supabase_client import supabase_configured, supabase_request
+from app.services.chat_service import reset_onboarding_session
 
 program_evaluations_bp = Blueprint("program_evaluations", __name__)
 
@@ -47,6 +48,18 @@ def _sync_supabase_records(
             return
 
         user_id = users[0]["id"]
+
+        # Reset onboarding status and chat history for new evaluation
+        try:
+            reset_onboarding_session(user_id)
+            supabase_request(
+                "PATCH",
+                f"/rest/v1/user_preferences?user_id=eq.{user_id}",
+                json={"onboarding_complete": False}
+            )
+        except Exception as e:
+            print(f"Failed to reset onboarding state: {e}")
+
         eval_payload = {
             "user_id": user_id,
             "storage_path": f"program-evaluations/{email}",

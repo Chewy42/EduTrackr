@@ -11,6 +11,4 @@ dist-ssr
 .context
 ai_docs
 __pycache__
-
-
-AGENTS.md
+venv
