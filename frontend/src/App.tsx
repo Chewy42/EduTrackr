@@ -9,9 +9,9 @@ import SubmitButton from "./components/SubmitButton";
 import EmailConfirmationNotice from "./components/EmailConfirmationNotice";
 import Sidebar from "./components/Sidebar";
 import ProgramEvaluationUpload from "./components/ProgramEvaluationUpload";
-import ProgramEvaluationViewer from "./components/ProgramEvaluationViewer";
 import OnboardingChat from "./components/OnboardingChat";
 import ExploreChatLayout from "./components/ExploreChatLayout";
+import SettingsPage from "./components/SettingsPage";
 import { ProgressPage } from "./components/progress";
 
 export default function App() {
@@ -98,6 +98,17 @@ export default function App() {
       );
     }
 
+    if (location.pathname === "/settings") {
+      return (
+        <div className="flex h-screen w-screen overflow-hidden bg-surface-muted text-text-primary">
+          <Sidebar />
+          <main className="flex-1 h-full overflow-y-auto p-4 min-w-0">
+            <SettingsPage />
+          </main>
+        </div>
+      );
+    }
+
     let title = "Welcome to EduTrackr";
     let subtitle = "You are signed in. Next: connect session state and onboarding.";
     let body: React.ReactNode = (
@@ -114,10 +125,6 @@ export default function App() {
           Schedule generation tools and recommendations will appear here.
         </div>
       );
-    } else if (location.pathname === "/settings") {
-      title = "Settings";
-      subtitle = "Adjust your EduTrackr experience.";
-      body = <ProgramEvaluationViewer />;
     }
 
     return (

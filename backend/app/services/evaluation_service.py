@@ -143,7 +143,19 @@ def save_metadata(
     # 2. Insert Sections
     sections = []
     order = 0
-    for key in ["student_info", "gpa", "credit_requirements", "courses"]:
+    section_keys = [
+        "student_info", 
+        "gpa", 
+        "credit_requirements", 
+        "courses",
+        "academic_status",
+        "degree_requirements",
+        "additional_programs",
+        "transfer_credits",
+        "semester_history",
+        "advisor"
+    ]
+    for key in section_keys:
         if key in parsed_data:
             sections.append({
                 "evaluation_id": evaluation_id,

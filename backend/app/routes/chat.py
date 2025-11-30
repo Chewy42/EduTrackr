@@ -217,12 +217,19 @@ def chat_explore_stream():
     print(f"Explore Stream request: user={user_id}, session={session_id}", file=sys.stdout, flush=True)
     
     try:
+        created_new_session = False
         if not session_id:
             session_id = create_explore_session(user_id, email)
+            created_new_session = True
             print(f"Created new explore session: {session_id}", file=sys.stdout, flush=True)
         
         def generate():
             try:
+                # If we created a new session, emit the session ID first for frontend sync
+                if created_new_session:
+                    session_chunk = json.dumps({"type": "session_id", "content": session_id})
+                    yield f"data: {session_chunk}\n\n"
+                
                 # Pass context="explore"
                 for chunk in generate_reply_stream(user_id, email, session_id, user_message, context="explore"):
                     chunk_json = json.dumps(chunk)

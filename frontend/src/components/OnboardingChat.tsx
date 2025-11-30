@@ -26,52 +26,82 @@ type OnboardingMode =
 
 type OnboardingStep = "welcome" | "analyzing" | "conversation" | "ready";
 
-// Smart quick replies based on conversation context
+// Smart quick replies based on last assistant question, aligned with backend parsing
 const getContextualQuickReplies = (messages: Message[], mode: OnboardingMode): string[] => {
-  const messageCount = messages.length;
-  const lastMessage = messages[messageCount - 1]?.content?.toLowerCase() || "";
-  
-  // Initial state - offer main options
-  if (messageCount <= 1 || mode === "undecided") {
+  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+  const lastText = lastAssistant?.content?.toLowerCase() || "";
+
+  // Planning mode question
+  if (
+    mode === "undecided" ||
+    lastText.includes("what would you like to focus on")
+  ) {
+    return [
+      "Next semester",
+      "Full 4-year plan",
+      "View my progress"
+    ];
+  }
+
+  // Credit load question
+  if (lastText.includes("credit load") || lastText.includes("credits")) {
+    return [
+      "Light (9-12)",
+      "Standard (12-15)",
+      "Heavy (15-18)"
+    ];
+  }
+
+  // Time / schedule question
+  if (lastText.includes("schedule") || lastText.includes("time") || lastText.includes("mornings") || lastText.includes("afternoons")) {
+    return [
+      "Mornings",
+      "Afternoons",
+      "Flexible"
+    ];
+  }
+
+  // Work status question
+  if (lastText.includes("work commitments") || lastText.includes("work")) {
+    return [
+      "I work part-time",
+      "Full-time job",
+      "No work commitments"
+    ];
+  }
+
+  // Summer availability question
+  if (lastText.includes("summer") && lastText.includes("classes")) {
+    return [
+      "Yes to summer",
+      "No summer classes",
+      "Maybe one course"
+    ];
+  }
+
+  // Focus / priority question
+  if (lastText.includes("priority") || lastText.includes("focus")) {
+    return [
+      "Major requirements",
+      "Electives/interests",
+      "Graduate on time"
+    ];
+  }
+
+  // Completion / general advisor mode
+  if (lastText.includes("all set") || lastText.includes("go to dashboard")) {
     return [
       "Plan my next semester",
-      "Show my degree progress", 
-      "Map out my 4-year plan"
+      "Show my degree progress",
+      "What courses do I need?"
     ];
   }
-  
-  // If discussing semester planning
-  if (mode === "upcoming_semester" || lastMessage.includes("semester") || lastMessage.includes("schedule")) {
-    return [
-      "I want 12-15 credits",
-      "Show available electives",
-      "I prefer morning classes"
-    ];
-  }
-  
-  // If discussing degree progress
-  if (mode === "view_progress" || lastMessage.includes("progress") || lastMessage.includes("remaining")) {
-    return [
-      "What's left to graduate?",
-      "Show GE requirements",
-      "List my completed courses"
-    ];
-  }
-  
-  // If discussing 4-year plan
-  if (mode === "four_year_plan" || lastMessage.includes("year") || lastMessage.includes("plan")) {
-    return [
-      "Balance my course load",
-      "When should I take electives?",
-      "Summer courses available?"
-    ];
-  }
-  
+
   // Default fallback
   return [
-    "Tell me more",
-    "What do you recommend?",
-    "Let's try something else"
+    "Plan my next semester",
+    "Show my degree progress",
+    "What courses do I need?"
   ];
 };
 
@@ -249,6 +279,12 @@ export default function OnboardingChat() {
     const userMsg = textToSend.trim();
     const lower = userMsg.toLowerCase();
     setError(null);
+
+    // Intercept "Go to Dashboard" command to make it functional
+    if (lower === "go to dashboard" || lower === "done") {
+      handleFinish();
+      return;
+    }
 
     let nextMode: OnboardingMode = mode;
     if (mode === "undecided") {

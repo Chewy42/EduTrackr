@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { 
   FiSend, 
   FiPlus,
@@ -7,7 +7,6 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "../auth/AuthContext";
-import { listChatSessions } from "../lib/api";
 
 type Message = {
   role: "user" | "assistant";
@@ -26,54 +25,82 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string>("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const initializedSessionId = useRef<string | null>(null);
+  const activeSessionRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const scrollToBottom = (smooth = true) => {
+  const scrollToBottom = useCallback((smooth = true) => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
         behavior: smooth ? "smooth" : "auto"
       });
     }
-  };
+  }, []);
 
   // Load session history when sessionId changes
   useEffect(() => {
     if (!jwt) return;
     
-    // If we switched sessions
-    if (sessionId && sessionId !== initializedSessionId.current) {
-      initializedSessionId.current = sessionId;
-      setLoading(true);
+    // Cancel any in-flight requests when switching sessions
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
+    // Track the current session to avoid race conditions
+    activeSessionRef.current = sessionId;
+    
+    if (sessionId) {
+      // Switching to an existing session - clear immediately for snappy UI
+      setMessages([]);
+      setSuggestions([]);
+      setStreamingContent("");
+      setHistoryLoading(true);
+      
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      
       fetch(`/api/chat/history/${sessionId}`, {
-        headers: { Authorization: `Bearer ${jwt}` }
+        headers: { Authorization: `Bearer ${jwt}` },
+        signal: controller.signal
       })
         .then(res => res.json())
         .then(data => {
-          if (data.messages) {
-            setMessages(data.messages.map((m: any) => ({ ...m, timestamp: new Date() })));
-            setSuggestions([]); // Clear suggestions on history load
+          // Only update if this is still the active session
+          if (activeSessionRef.current === sessionId && data.messages) {
+            setMessages(data.messages.map((m: any) => ({ 
+              role: m.role, 
+              content: m.content, 
+              timestamp: new Date() 
+            })));
           }
         })
-        .catch(console.error)
-        .finally(() => setLoading(false));
-    } else if (!sessionId && initializedSessionId.current) {
-      // Reset to new chat state
-      initializedSessionId.current = null;
+        .catch(err => {
+          if (err.name !== 'AbortError') {
+            console.error(err);
+          }
+        })
+        .finally(() => {
+          if (activeSessionRef.current === sessionId) {
+            setHistoryLoading(false);
+          }
+        });
+    } else {
+      // New chat - reset to initial state
       setMessages([]);
       setSuggestions(["What can I do with my major?", "Am I on track to graduate?", "Show me my degree progress"]);
-    } else if (!sessionId && !initializedSessionId.current && messages.length === 0) {
-      // Initial empty state
-      setSuggestions(["What can I do with my major?", "Am I on track to graduate?", "Show me my degree progress"]);
+      setStreamingContent("");
+      setHistoryLoading(false);
     }
   }, [sessionId, jwt]);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, scrollToBottom]);
 
   const handleSend = async (e?: React.FormEvent, msgOverride?: string) => {
     e?.preventDefault();
@@ -81,6 +108,8 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
     if (!textToSend.trim() || !jwt || loading) return;
 
     const userMsg = textToSend.trim();
+    const currentSessionId = sessionId; // Capture current session ID
+    
     setInput("");
     setSuggestions([]);
     setMessages(prev => [...prev, { role: "user", content: userMsg, timestamp: new Date() }]);
@@ -96,7 +125,7 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
         },
         body: JSON.stringify({ 
           message: userMsg, 
-          session_id: sessionId 
+          session_id: currentSessionId 
         }),
       });
 
@@ -123,34 +152,19 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
                if (accumulatedContent) {
                  // Parse out suggestions if present
                  const parts = accumulatedContent.split(/\[SUGGESTIONS\]/i);
-                 const cleanContent = (parts[0] || "").replace("[RESPONSE START]", "").replace("[RESPONSE END]", "").trim();
+                 // Clean content - remove all response markers
+                 let cleanContent = (parts[0] || "")
+                   .replace(/\[RESPONSE START\]/gi, "")
+                   .replace(/\[RESPONSE END\]/gi, "")
+                   .replace(/\[\/RESPONSE\]/gi, "")
+                   .trim();
                  
                  setMessages(prev => [...prev, { role: "assistant", content: cleanContent, timestamp: new Date() }]);
                  setStreamingContent("");
                  
                  if (parts[1]) {
-                   const suggs = parts[1].replace("[/SUGGESTIONS]", "").trim().split("\n").filter(s => s.trim());
+                   const suggs = parts[1].replace(/\[\/SUGGESTIONS\]/gi, "").trim().split("\n").filter(s => s.trim());
                    setSuggestions(suggs);
-                 }
-                 
-                 // If we didn't have a session ID, try to fetch the latest one to sync up
-                 if (!sessionId) {
-                    // Small delay to ensure DB write
-                    setTimeout(() => {
-                      listChatSessions(jwt).then(sessions => {
-                        // Assuming the newest one is ours
-                        if (sessions.length > 0) {
-                           // We don't force switch because it might reload the chat, 
-                           // but we could notify the parent to refresh the sidebar?
-                           // For now, we just let the user continue chatting in "null" session state locally,
-                           // but subsequent messages should ideally attach to the same session.
-                           // Actually, the backend creates a NEW session every time if we send null.
-                           // That's bad. We need the session ID back from the stream.
-                           // But the stream doesn't return it easily in the first chunk.
-                           // Wait, I can make the backend return the session ID in the first chunk!
-                        }
-                      });
-                    }, 1000);
                  }
                }
                continue;
@@ -159,10 +173,18 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
               const parsed = JSON.parse(data);
               if (parsed.type === "chunk") {
                 accumulatedContent += parsed.content;
-                // Display logic
+                // Display logic - parse out markers for clean display
                 const parts = accumulatedContent.split(/\[SUGGESTIONS\]/i);
-                const displayContent = (parts[0] || "").replace("[RESPONSE START]", "").replace("[RESPONSE END]", "").trim();
+                const displayContent = (parts[0] || "")
+                  .replace(/\[RESPONSE START\]/gi, "")
+                  .replace(/\[RESPONSE END\]/gi, "")
+                  .replace(/\[\/RESPONSE\]/gi, "")
+                  .trim();
                 setStreamingContent(displayContent);
+              } else if (parsed.type === "session_id" && parsed.content && !currentSessionId) {
+                // Backend returned a new session ID - sync it up
+                onSessionChange(parsed.content);
+                activeSessionRef.current = parsed.content;
               }
             } catch {}
           }
@@ -177,6 +199,20 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
   };
 
   const handleNewChat = () => {
+    // Cancel any in-flight requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    // Clear local state immediately for responsive UI
+    setMessages([]);
+    setStreamingContent("");
+    setInput("");
+    setLoading(false);
+    setHistoryLoading(false);
+    setSuggestions(["What can I do with my major?", "Am I on track to graduate?", "Show me my degree progress"]);
+    activeSessionRef.current = null;
+    // Then notify parent to clear session ID
     onSessionChange(null);
   };
 
@@ -186,7 +222,7 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white/80 backdrop-blur-sm z-10">
         <div>
           <h1 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <span className="bg-indigo-100 p-1.5 rounded-lg text-indigo-600">
+            <span className="bg-brand-100 p-1.5 rounded-lg text-brand-600">
               <FiMessageSquare className="h-4 w-4" />
             </span>
             Explore My Options
@@ -206,10 +242,20 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth" ref={scrollRef}>
-        {messages.length === 0 && !loading && (
+        {historyLoading && (
+          <div className="flex items-center justify-center h-full">
+            <div className="flex gap-1">
+              <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          </div>
+        )}
+
+        {!historyLoading && messages.length === 0 && !loading && (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-60 mt-10">
-            <div className="bg-indigo-50 p-4 rounded-full">
-              <FiMessageSquare className="h-8 w-8 text-indigo-400" />
+            <div className="bg-brand-50 p-4 rounded-full">
+              <FiMessageSquare className="h-8 w-8 text-brand-400" />
             </div>
             <div className="max-w-xs">
               <h3 className="text-sm font-medium text-slate-800">Start a new exploration</h3>
@@ -230,7 +276,7 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
             <div
               className={`max-w-[85%] lg:max-w-[75%] rounded-2xl px-5 py-3.5 text-sm leading-relaxed shadow-sm ${
                 msg.role === "user"
-                  ? "bg-indigo-600 text-white rounded-br-none"
+                  ? "bg-gradient-to-r from-brand-600 to-brand-500 text-white rounded-br-none"
                   : "bg-white border border-slate-100 text-slate-700 rounded-bl-none"
               }`}
             >
@@ -239,7 +285,7 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
                 className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5"
                 components={{
                   p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
-                  a: ({node, ...props}) => <a className="text-blue-400 hover:underline" {...props} />,
+                  a: ({node, ...props}) => <a className="text-brand-500 hover:underline" {...props} />,
                   ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
                   ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
                 }}
@@ -256,7 +302,7 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
               <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm max-w-none">
                 {streamingContent}
               </ReactMarkdown>
-              <span className="inline-block w-1.5 h-3.5 ml-1 bg-indigo-400 animate-pulse align-middle" />
+              <span className="inline-block w-1.5 h-3.5 ml-1 bg-brand-400 animate-pulse align-middle" />
             </div>
           </div>
         )}
@@ -282,7 +328,7 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
               <button
                 key={i}
                 onClick={() => handleSend(undefined, s)}
-                className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full hover:bg-indigo-100 transition-colors border border-indigo-100"
+                className="text-xs bg-brand-50 text-brand-700 px-3 py-1.5 rounded-full hover:bg-brand-100 transition-colors border border-brand-100"
               >
                 {s}
               </button>
@@ -292,7 +338,7 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
         
         <form
           onSubmit={(e) => handleSend(e)}
-          className="relative flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100 transition-all"
+          className="relative flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-100 transition-all"
         >
           <input
             ref={inputRef}
@@ -306,7 +352,7 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
           <button
             type="submit"
             disabled={!input.trim() || loading}
-            className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+            className="p-2 bg-gradient-to-r from-brand-600 to-brand-500 text-white rounded-lg hover:from-brand-600 hover:to-brand-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
           >
             <FiSend className="h-4 w-4" />
           </button>

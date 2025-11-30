@@ -177,24 +177,26 @@ export default function ProgramEvaluationViewer() {
       </div>
 
       {replaceModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
-          <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200 p-6">
-            <button
-              type="button"
-              onClick={() => setReplaceModalOpen(false)}
-              className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full cursor-pointer transition-transform duration-150 hover:scale-110 active:scale-95"
-              aria-label="Close"
-            >
-              <FiX className="text-lg text-text-primary" />
-            </button>
-            <h2 className="text-lg font-semibold mb-4">Replace Program Evaluation</h2>
-            <p className="text-sm text-slate-500 mb-6">
-              Uploading a new evaluation will reset your onboarding progress and chat history.
-            </p>
-            <ProgramEvaluationUpload onSuccess={() => {
-               setReplaceModalOpen(false);
-               window.location.href = "/";
-            }} />
+        <div className="fixed inset-0 z-50 bg-black/40 overflow-y-auto">
+          <div className="min-h-full flex items-start justify-center px-4 py-8">
+            <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200 p-6 my-auto">
+              <button
+                type="button"
+                onClick={() => setReplaceModalOpen(false)}
+                className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full cursor-pointer transition-transform duration-150 hover:scale-110 active:scale-95 z-10"
+                aria-label="Close"
+              >
+                <FiX className="text-lg text-text-primary" />
+              </button>
+              <h2 className="text-lg font-semibold mb-4">Replace Program Evaluation</h2>
+              <p className="text-sm text-slate-500 mb-6">
+                Uploading a new evaluation will reset your onboarding progress and chat history.
+              </p>
+              <ProgramEvaluationUpload onSuccess={() => {
+                setReplaceModalOpen(false);
+                window.location.href = "/";
+              }} />
+            </div>
           </div>
         </div>
       ) : null}

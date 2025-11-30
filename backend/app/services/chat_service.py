@@ -93,8 +93,9 @@ def get_or_create_onboarding_session(user_id: str, email: str) -> str:
 def reset_onboarding_session(user_id: str):
     """
     Deletes any existing 'Onboarding' session for the user so they can start over.
+    Also clears their scheduling preferences so they can re-answer questions.
     """
-    # Find session
+    # Find and delete onboarding session
     resp = supabase_request(
         "GET", 
         f"/rest/v1/chat_sessions?user_id=eq.{user_id}&title=eq.Onboarding&select=id"
@@ -106,6 +107,12 @@ def reset_onboarding_session(user_id: str):
                 "DELETE",
                 f"/rest/v1/chat_sessions?id=eq.{sess['id']}"
             )
+    
+    # Clear scheduling preferences so user can start fresh
+    supabase_request(
+        "DELETE",
+        f"/rest/v1/scheduling_preferences?user_id=eq.{user_id}"
+    )
 
 def save_message(session_id: str, sender: str, text: str):
     payload = {
@@ -129,18 +136,26 @@ def get_scheduling_preferences(user_id: str) -> Dict[str, Any]:
     return {}
 
 
-def save_scheduling_preference(user_id: str, field: str, value: Any) -> Dict[str, Any]:
+def save_scheduling_preference(user_id: str, field: str, value: Any, collected_name: str = None) -> Dict[str, Any]:
     """
     Save or update a single scheduling preference field.
     Uses upsert to create row if not exists.
+    
+    Args:
+        user_id: The user's ID
+        field: The database column name to save to
+        value: The value to save
+        collected_name: Optional semantic name to add to collected_fields array.
+                       If not provided, uses the field name.
     """
     # First check if row exists
     existing = get_scheduling_preferences(user_id)
     
     # Build update payload
     collected = existing.get('collected_fields', []) or []
-    if field not in collected:
-        collected.append(field)
+    name_to_add = collected_name if collected_name else field
+    if name_to_add not in collected:
+        collected.append(name_to_add)
     
     payload = {
         "user_id": user_id,
@@ -148,6 +163,9 @@ def save_scheduling_preference(user_id: str, field: str, value: Any) -> Dict[str
         "collected_fields": collected,
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
+    
+    print(f"DEBUG save_scheduling_preference: user={user_id}, field={field}, value={value}, collected_name={name_to_add}")
+    print(f"DEBUG save_scheduling_preference: existing={bool(existing)}, collected_fields will be={collected}")
     
     if existing:
         # Update existing row
@@ -166,6 +184,8 @@ def save_scheduling_preference(user_id: str, field: str, value: Any) -> Dict[str
             headers={"Prefer": "return=representation"}
         )
     
+    print(f"DEBUG save_scheduling_preference: response status={resp.status_code}, body={resp.text[:200] if resp.text else 'empty'}")
+    
     if resp.status_code in (200, 201) and resp.json():
         return resp.json()[0] if isinstance(resp.json(), list) else resp.json()
     return {}
@@ -179,83 +199,105 @@ def parse_and_save_user_response(user_id: str, user_message: str, current_prefs:
     msg_lower = user_message.lower().strip()
     field_saved = ""
     
-    # Detect planning mode
-    if any(x in msg_lower for x in ["next semester", "upcoming", "this semester"]):
+    print(f"DEBUG parse_and_save: Parsing message '{msg_lower}' for user {user_id}")
+    print(f"DEBUG parse_and_save: Current prefs collected_fields: {current_prefs.get('collected_fields', [])}")
+    
+    # Detect planning mode - be more flexible with matching
+    # Include exact button text variations
+    planning_next_semester = ["next semester", "upcoming", "this semester", "next sem", "semester planning", "plan my next semester"]
+    planning_four_year = ["4-year", "four year", "4 year", "full plan", "full 4", "4-year path", "full path", "map out my 4-year", "4-year plan"]
+    planning_progress = ["progress", "view progress", "view my progress", "my progress", "show progress", "degree progress", "show my degree"]
+    
+    if any(x in msg_lower for x in planning_next_semester):
         save_scheduling_preference(user_id, "planning_mode", "upcoming_semester")
         field_saved = "planning_mode"
-    elif any(x in msg_lower for x in ["4-year", "four year", "4 year", "full plan"]):
+        print(f"DEBUG parse_and_save: Detected planning_mode = upcoming_semester")
+    elif any(x in msg_lower for x in planning_four_year):
         save_scheduling_preference(user_id, "planning_mode", "four_year_plan")
         field_saved = "planning_mode"
-    elif any(x in msg_lower for x in ["progress", "view progress"]):
+        print(f"DEBUG parse_and_save: Detected planning_mode = four_year_plan")
+    elif any(x in msg_lower for x in planning_progress):
         save_scheduling_preference(user_id, "planning_mode", "view_progress")
         field_saved = "planning_mode"
+        print(f"DEBUG parse_and_save: Detected planning_mode = view_progress")
     
     # Detect credit load
     elif any(x in msg_lower for x in ["9-12", "9 to 12", "light", "9 12"]):
-        save_scheduling_preference(user_id, "preferred_credits_min", 9)
-        save_scheduling_preference(user_id, "preferred_credits_max", 12)
+        save_scheduling_preference(user_id, "preferred_credits_min", 9, collected_name="credits")
+        save_scheduling_preference(user_id, "preferred_credits_max", 12, collected_name="credits")
         field_saved = "credits"
-    elif any(x in msg_lower for x in ["12-15", "12 to 15", "standard", "12 15", "12-15 credits"]):
-        save_scheduling_preference(user_id, "preferred_credits_min", 12)
-        save_scheduling_preference(user_id, "preferred_credits_max", 15)
+    elif any(x in msg_lower for x in [
+        "12-15", "12 to 15", "standard", "12 15", "12-15 credits",
+        "i want 12-15", "i want 12 to 15", "12 to 15 credits", "12-15 credits load"
+    ]):
+        save_scheduling_preference(user_id, "preferred_credits_min", 12, collected_name="credits")
+        save_scheduling_preference(user_id, "preferred_credits_max", 15, collected_name="credits")
         field_saved = "credits"
-    elif any(x in msg_lower for x in ["15-18", "15 to 18", "heavy", "15 18"]):
-        save_scheduling_preference(user_id, "preferred_credits_min", 15)
-        save_scheduling_preference(user_id, "preferred_credits_max", 18)
+    elif any(x in msg_lower for x in ["15-18", "15 to 18", "heavy", "15 18", "heavy load", "take a heavy load"]):
+        save_scheduling_preference(user_id, "preferred_credits_min", 15, collected_name="credits")
+        save_scheduling_preference(user_id, "preferred_credits_max", 18, collected_name="credits")
         field_saved = "credits"
     
     # Detect schedule/time preferences
     elif any(x in msg_lower for x in ["morning", "mornings only", "am classes"]):
-        save_scheduling_preference(user_id, "preferred_time_of_day", "morning")
+        save_scheduling_preference(user_id, "preferred_time_of_day", "morning", collected_name="time_preference")
         field_saved = "time_preference"
     elif any(x in msg_lower for x in ["afternoon"]):
-        save_scheduling_preference(user_id, "preferred_time_of_day", "afternoon")
+        save_scheduling_preference(user_id, "preferred_time_of_day", "afternoon", collected_name="time_preference")
         field_saved = "time_preference"
     elif any(x in msg_lower for x in ["evening", "night", "after 5"]):
-        save_scheduling_preference(user_id, "preferred_time_of_day", "evening")
+        save_scheduling_preference(user_id, "preferred_time_of_day", "evening", collected_name="time_preference")
         field_saved = "time_preference"
     elif any(x in msg_lower for x in ["flexible", "any time", "no preference"]):
-        save_scheduling_preference(user_id, "preferred_time_of_day", "flexible")
+        save_scheduling_preference(user_id, "preferred_time_of_day", "flexible", collected_name="time_preference")
         field_saved = "time_preference"
     elif "no friday" in msg_lower or "no fridays" in msg_lower:
-        save_scheduling_preference(user_id, "days_to_avoid", ["Friday"])
+        save_scheduling_preference(user_id, "days_to_avoid", ["Friday"], collected_name="days_to_avoid")
         field_saved = "days_to_avoid"
     
     # Detect work status
     elif any(x in msg_lower for x in ["part-time", "part time", "work part"]):
-        save_scheduling_preference(user_id, "work_status", "part_time")
+        save_scheduling_preference(user_id, "work_status", "part_time", collected_name="work_status")
         field_saved = "work_status"
     elif any(x in msg_lower for x in ["full-time job", "full time job", "work full"]):
-        save_scheduling_preference(user_id, "work_status", "full_time")
+        save_scheduling_preference(user_id, "work_status", "full_time", collected_name="work_status")
         field_saved = "work_status"
-    elif any(x in msg_lower for x in ["no work", "don't work", "no job", "no commitments"]):
-        save_scheduling_preference(user_id, "work_status", "none")
+    elif any(x in msg_lower for x in ["no work", "don't work", "no job", "no commitments", "no work commitments"]):
+        save_scheduling_preference(user_id, "work_status", "none", collected_name="work_status")
         field_saved = "work_status"
     
     # Detect summer availability
     elif any(x in msg_lower for x in ["yes to summer", "yes summer", "take summer"]):
-        save_scheduling_preference(user_id, "summer_availability", "yes")
+        save_scheduling_preference(user_id, "summer_availability", "yes", collected_name="summer")
         field_saved = "summer"
     elif any(x in msg_lower for x in ["no summer", "not summer"]):
-        save_scheduling_preference(user_id, "summer_availability", "no")
+        save_scheduling_preference(user_id, "summer_availability", "no", collected_name="summer")
         field_saved = "summer"
     elif any(x in msg_lower for x in ["maybe", "one course", "maybe summer"]):
-        save_scheduling_preference(user_id, "summer_availability", "maybe")
+        save_scheduling_preference(user_id, "summer_availability", "maybe", collected_name="summer")
         field_saved = "summer"
     
     # Detect priority focus
     elif any(x in msg_lower for x in ["major req", "major requirements", "requirements first"]):
-        save_scheduling_preference(user_id, "priority_focus", "major_requirements")
+        save_scheduling_preference(user_id, "priority_focus", "major_requirements", collected_name="focus")
         field_saved = "focus"
     elif any(x in msg_lower for x in ["elective", "interests", "fun classes"]):
-        save_scheduling_preference(user_id, "priority_focus", "electives")
+        save_scheduling_preference(user_id, "priority_focus", "electives", collected_name="focus")
         field_saved = "focus"
     elif any(x in msg_lower for x in ["graduat", "on time", "finish"]):
-        save_scheduling_preference(user_id, "priority_focus", "graduation_timeline")
+        save_scheduling_preference(user_id, "priority_focus", "graduation_timeline", collected_name="focus")
         field_saved = "focus"
     
+    # Log result
+    if field_saved:
+        print(f"DEBUG parse_and_save: Saved field '{field_saved}' for user {user_id}")
+    else:
+        print(f"DEBUG parse_and_save: No field matched for message '{msg_lower}'")
+    
     # Return updated preferences
-    return get_scheduling_preferences(user_id), field_saved
+    updated_prefs = get_scheduling_preferences(user_id)
+    print(f"DEBUG parse_and_save: Updated prefs collected_fields: {updated_prefs.get('collected_fields', [])}")
+    return updated_prefs, field_saved
 
 
 def check_onboarding_completeness(prefs: Dict[str, Any]) -> Tuple[bool, List[str]]:
@@ -297,6 +339,9 @@ def get_next_question_topic(prefs: Dict[str, Any]) -> str:
     """
     collected = prefs.get('collected_fields', []) or []
     
+    print(f"DEBUG get_next_question_topic: collected_fields = {collected}")
+    print(f"DEBUG get_next_question_topic: prefs keys = {list(prefs.keys())}")
+    
     # Order of questions to ask
     question_order = [
         ('planning_mode', 'planning_mode'),
@@ -308,9 +353,12 @@ def get_next_question_topic(prefs: Dict[str, Any]) -> str:
     ]
     
     for field_name, db_field in question_order:
+        # Check both the collected_fields array AND the actual field value
         if field_name not in collected and not prefs.get(db_field):
+            print(f"DEBUG get_next_question_topic: Next topic = {field_name} (not in collected and no value)")
             return field_name
     
+    print(f"DEBUG get_next_question_topic: All topics complete!")
     return 'complete'
 
 
@@ -640,6 +688,7 @@ def generate_reply(
     # Extract student name if available
     student_info = parsed_fields.get("student_info", {})
     student_name = student_info.get("name", "").split()[0] if student_info.get("name") else ""
+    student_name = student_name.replace(",", "").strip()
 
     if context == "explore":
         system_prompt = f"""
@@ -866,6 +915,7 @@ def generate_reply_stream(
     # Extract student name if available
     student_info = parsed_fields.get("student_info", {})
     student_name = student_info.get("name", "").split()[0] if student_info.get("name") else ""
+    student_name = student_name.replace(",", "").strip()
     
     # 1d. Get current preferences and parse user's response
     current_prefs = get_scheduling_preferences(user_id)
@@ -902,20 +952,15 @@ Current Context:
 - Do NOT ask the onboarding questions (credit load, work status, etc.) unless relevant to the user's query.
 
 **OUTPUT FORMAT**:
-Just the response text. Do NOT use XML tags for the message body.
-At the end, you can optionally provide suggestions in a separate block if needed, but for streaming, we'll just stream the text.
-Actually, to keep it consistent with the frontend parser, please append a special marker for suggestions if you have them.
-Format:
-[RESPONSE START]
-... your response ...
-[RESPONSE END]
+Just respond with your message directly. Do NOT use any special markers like [RESPONSE START] or [RESPONSE END].
+You may optionally include follow-up suggestions at the very end using this format:
 [SUGGESTIONS]
 Suggestion 1
 Suggestion 2
 Suggestion 3
 [/SUGGESTIONS]
 
-If no suggestions, omit the suggestions block.
+If no suggestions, just provide the response text with no special markers.
 """
     else:
         # Build the system prompt - ONE question at a time
@@ -935,9 +980,10 @@ Current mode: {normalized_mode}
 
 **CRITICAL RULES**:
 1. Ask only ONE question per message - never two or more
-2. Keep responses under 50 words
+2. Keep responses under 60 words
 3. Use emojis for visual clarity
 4. Use **bold** for options
+5. Be friendly and conversational, not robotic
 
 **EMOJI GUIDE**:
 - 📋 planning mode | 📚 credits | ⏰ schedule | 💼 work | 🌴 summer | 🎯 focus | ✅ confirmations
@@ -945,44 +991,44 @@ Current mode: {normalized_mode}
 **QUESTION TEMPLATES** (use the one matching next_topic):
 
 If next_topic is "planning_mode":
-Hi {student_name or 'there'}! 👋 Quick question to get started:
+Hi {student_name or 'there'}! 👋 I'm your academic advisor. I'll ask a few quick questions to personalize your plan.
 
-📋 What would you like to focus on?
+📋 First, what's your main focus right now?
 - **Next semester** planning
 - **Full 4-year** path
 - **View progress** so far
 
 If next_topic is "credits":
-✅ Got it!
+✅ Got it.
 
-📚 **Credit load** preference? **Light** (9-12), **Standard** (12-15), or **Heavy** (15-18)?
+📚 How about **credit load**? **Light** (9-12), **Standard** (12-15), or **Heavy** (15-18)?
 
 If next_topic is "time_preference":
-✅ Noted!
+✅ Noted.
 
-⏰ **Schedule**: **Mornings**, **Afternoons**, **Evenings**, or **Flexible**?
+⏰ When do you prefer classes? **Mornings**, **Afternoons**, **Evenings**, or **Flexible**?
 
 If next_topic is "work_status":
-✅ Perfect!
+✅ Perfect.
 
-💼 **Work** commitments? **Part-time**, **Full-time**, or **No work**?
+💼 Do you have **work** commitments? **Part-time**, **Full-time**, or **No work**?
 
 If next_topic is "summer":
-✅ Great!
+✅ Great.
 
-🌴 **Summer** classes? **Yes**, **No**, or **Maybe one course**?
+🌴 Are you open to **Summer** classes? **Yes**, **No**, or **Maybe one course**?
 
 If next_topic is "focus":
-✅ Almost done!
+✅ Almost done.
 
-🎯 **Priority**: **Major requirements**, **Electives/interests**, or **Graduate on time**?
+🎯 What's your top **priority**? **Major requirements**, **Electives/interests**, or **Graduate on time**?
 
 If next_topic is "complete" OR is_complete is True:
 ✅ **All set, {student_name or 'there'}!** I've saved your preferences:
 
 📝 {collected_summary}
 
-Feel free to keep chatting to fine-tune, or click **Go to Dashboard** to see your personalized plan!
+I'm ready to help you explore! You can ask me anything about your degree, or click the **Go to Dashboard** button above to see your full plan.
 
 **SUGGESTIONS** (MUST match your question):
 - planning_mode: ["Next semester", "Full 4-year plan", "View my progress"]
@@ -991,7 +1037,7 @@ Feel free to keep chatting to fine-tune, or click **Go to Dashboard** to see you
 - work_status: ["Part-time work", "Full-time job", "No work"]
 - summer: ["Yes to summer", "No summer", "Maybe one course"]
 - focus: ["Major requirements", "Electives", "Graduate on time"]
-- complete: ["Go to Dashboard", "Change something", "Ask a question"]
+- complete: ["Show my degree progress", "What courses do I need?", "Change preferences"]
 
 OUTPUT: Plain markdown, then on a NEW LINE at the very end:
 [SUGGESTIONS: "answer1", "answer2", "answer3"]

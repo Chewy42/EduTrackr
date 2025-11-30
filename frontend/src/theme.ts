@@ -4,15 +4,15 @@ export const appTheme = createTheme({
 	palette: {
 		mode: 'light',
 		primary: {
-			main: '#4f46e5', // Deep indigo
-			light: '#6366f1',
-			dark: '#4338ca',
+			main: '#2563eb', // Brand blue
+			light: '#60a5fa',
+			dark: '#1d4ed8',
 			contrastText: '#ffffff',
 		},
 		secondary: {
-			main: '#7c3aed', // Purple accent
-			light: '#8b5cf6',
-			dark: '#6d28d9',
+			main: '#0ea5e9', // Vibrant sky accent
+			light: '#38bdf8',
+			dark: '#0284c7',
 			contrastText: '#ffffff',
 		},
 		background: {
@@ -110,17 +110,17 @@ export const appTheme = createTheme({
 					},
 				},
 				containedPrimary: {
-					background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+					background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
 					'&:hover': {
-						background: 'linear-gradient(135deg, #4338ca 0%, #6d28d9 100%)',
+						background: 'linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)',
 					},
 				},
 				outlinedPrimary: {
-					borderColor: 'rgba(79, 70, 229, 0.5)',
-					color: '#4f46e5',
+					borderColor: 'rgba(37, 99, 235, 0.5)',
+					color: '#2563eb',
 					'&:hover': {
-						borderColor: '#4f46e5',
-						backgroundColor: 'rgba(79, 70, 229, 0.04)',
+						borderColor: '#2563eb',
+						backgroundColor: 'rgba(37, 99, 235, 0.05)',
 					},
 				},
 			},
@@ -208,13 +208,13 @@ export const appTheme = createTheme({
 					transition: 'all 0.2s ease-in-out',
 					border: '1px solid rgba(148, 163, 184, 0.2)',
 					'&:hover': {
-						borderColor: 'rgba(79, 70, 229, 0.4)',
+						borderColor: 'rgba(37, 99, 235, 0.4)',
 						backgroundColor: '#ffffff',
 					},
 					'&.Mui-focused': {
 						backgroundColor: '#ffffff',
-						borderColor: '#4f46e5',
-						boxShadow: '0 0 0 3px rgba(79, 70, 229, 0.1)',
+						borderColor: '#2563eb',
+						boxShadow: '0 0 0 3px rgba(37, 99, 235, 0.12)',
 					},
 				},
 				notchedOutline: {
@@ -234,7 +234,7 @@ export const appTheme = createTheme({
 					fontWeight: 500,
 					color: '#64748b',
 					'&.Mui-focused': {
-						color: '#4f46e5',
+						color: '#2563eb',
 					},
 				},
 			},

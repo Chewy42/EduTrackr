@@ -15,6 +15,7 @@ from app.services.evaluation_service import (
     has_program_evaluation,
 )
 from app.services.supabase_client import supabase_request
+from app.services.chat_service import reset_onboarding_session
 
 program_evaluations_bp = Blueprint("program_evaluations", __name__)
 
@@ -46,6 +47,25 @@ def upload_program_evaluation():
         return jsonify({"error": "Only PDF files are supported."}), 400
 
     try:
+        # 0. Get user_id and reset onboarding state
+        user_resp = supabase_request("GET", f"/rest/v1/app_users?email=eq.{email}&select=id")
+        if user_resp.status_code == 200 and user_resp.json():
+            user_id = user_resp.json()[0]["id"]
+            # Reset onboarding session (deletes chat history)
+            try:
+                reset_onboarding_session(user_id)
+            except Exception as e:
+                print(f"Failed to reset onboarding session: {e}")
+            # Reset onboarding_complete preference to false
+            try:
+                supabase_request(
+                    "PATCH",
+                    f"/rest/v1/user_preferences?user_id=eq.{user_id}",
+                    json={"onboarding_complete": False}
+                )
+            except Exception as e:
+                print(f"Failed to reset onboarding preference: {e}")
+
         # 1. Upload to Supabase Storage
         storage_path, size_bytes, file_bytes = upload_evaluation_file(file, email)
         
@@ -64,6 +84,7 @@ def upload_program_evaluation():
             "filename": filename,
             "parsed": parsed_data,
             "hasProgramEvaluation": True,
+            "onboardingComplete": False,
         }), 201
 
     except ValueError as e:
