@@ -6,16 +6,29 @@ expertMode = true
 channel = "stable-25_05"
 
 [workflows]
-runButton = "Dev"
+runButton = "Project"
 
 [[workflows.workflow]]
-name = "Dev"
-author = "Chewy42"
+name = "Project"
+author = "agent"
+mode = "parallel"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "EduTrackr"
+waitForPort = 80
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "EduTrackr"
+author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm run dev"
-waitForPort = 80
+waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
@@ -31,6 +44,10 @@ externalPort = 3000
 [[ports]]
 localPort = 5173
 externalPort = 80
+
+[[ports]]
+localPort = 44463
+externalPort = 3001
 
 
 
