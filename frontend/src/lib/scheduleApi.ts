@@ -3,14 +3,15 @@
  * Provides typed API calls for class search, validation, and requirements.
  */
 import type {
-  ClassSection,
-  ClassSearchParams,
-  ClassesSearchResponse,
-  RequirementsSummary,
-  ScheduleValidation,
-  StatsResponse,
-  SubjectsResponse,
-} from '../components/schedule/types';
+	  ClassSection,
+	  ClassSearchParams,
+	  ClassesSearchResponse,
+	  RequirementsSummary,
+	  ScheduleValidation,
+	  StatsResponse,
+	  SubjectsResponse,
+	  ScheduleSnapshot,
+	} from '../components/schedule/types';
 
 const API_BASE = '/api';
 
@@ -197,4 +198,84 @@ export async function getScheduleStats(): Promise<StatsResponse> {
   }
   
   return res.json();
+}
+
+/**
+ * Save the current schedule as a named snapshot for the authenticated user.
+ */
+export async function createScheduleSnapshot(
+	name: string,
+	classIds: string[],
+	totalCredits: number,
+	jwt: string,
+): Promise<ScheduleSnapshot> {
+	const res = await fetch(`${API_BASE}/schedule/snapshots`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${jwt}`,
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({
+			name,
+			class_ids: classIds,
+			total_credits: totalCredits,
+		}),
+	});
+
+	if (!res.ok) {
+		let message = `Failed to save schedule snapshot: ${res.status}`;
+		try {
+			const data = await res.json();
+			if (data?.error) {
+				message = data.error;
+			}
+		} catch {
+			// Ignore JSON parse errors when reading error response
+		}
+		throw new Error(message);
+	}
+
+	return res.json();
+}
+
+/**
+ * Get all schedule snapshots for the authenticated user.
+ */
+export async function listScheduleSnapshots(jwt: string): Promise<ScheduleSnapshot[]> {
+	const res = await fetch(`${API_BASE}/schedule/snapshots`, {
+		headers: {
+			Authorization: `Bearer ${jwt}`,
+			Accept: 'application/json',
+		},
+	});
+
+	if (!res.ok) {
+		throw new Error(`Failed to load schedule snapshots: ${res.status}`);
+	}
+
+	const data = await res.json();
+	// Backend returns { snapshots: [...] }
+	return Array.isArray(data.snapshots) ? data.snapshots : [];
+}
+
+/**
+ * Delete a schedule snapshot by ID for the authenticated user.
+ */
+export async function deleteScheduleSnapshot(
+	snapshotId: string,
+	jwt: string,
+): Promise<void> {
+	const res = await fetch(`${API_BASE}/schedule/snapshots/${snapshotId}`, {
+		method: 'DELETE',
+		headers: {
+			Authorization: `Bearer ${jwt}`,
+			Accept: 'application/json',
+		},
+	});
+
+	if (!res.ok && res.status !== 404) {
+		// 404 can be safely treated as "already deleted"
+		throw new Error(`Failed to delete schedule snapshot: ${res.status}`);
+	}
 }

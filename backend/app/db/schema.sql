@@ -76,6 +76,10 @@ CREATE TABLE IF NOT EXISTS program_evaluations (
     created_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('UTC', NOW())
 );
 
+-- Ensure at most one program evaluation row per user
+CREATE UNIQUE INDEX IF NOT EXISTS idx_program_evaluations_user_unique
+    ON program_evaluations(user_id);
+
 CREATE INDEX IF NOT EXISTS idx_program_evaluations_user ON program_evaluations(user_id);
 
 CREATE TABLE IF NOT EXISTS program_evaluation_sections (

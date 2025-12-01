@@ -38,18 +38,20 @@ def clean_json_string(s: str) -> str:
     s = re.sub(r'```\s*', '', s)
     return s.strip()
 
+# Standard grade point mapping for GPA calculations
+GRADE_POINTS: Dict[str, float] = {
+    "A+": 4.0, "A": 4.0, "A-": 3.7,
+    "B+": 3.3, "B": 3.0, "B-": 2.7,
+    "C+": 2.3, "C": 2.0, "C-": 1.7,
+    "D+": 1.3, "D": 1.0, "D-": 0.7,
+    "F": 0.0,
+}
+
+
 def compute_gpa_from_courses(courses: List[Dict[str, Any]]) -> Optional[float]:
     """
     Fallback overall GPA computed directly from completed courses.
     """
-    grade_points: Dict[str, float] = {
-        "A+": 4.0, "A": 4.0, "A-": 3.7,
-        "B+": 3.3, "B": 3.0, "B-": 2.7,
-        "C+": 2.3, "C": 2.0, "C-": 1.7,
-        "D+": 1.3, "D": 1.0, "D-": 0.7,
-        "F": 0.0,
-    }
-
     total_points = 0.0
     total_credits = 0.0
 
@@ -60,10 +62,48 @@ def compute_gpa_from_courses(courses: List[Dict[str, Any]]) -> Optional[float]:
         except (ValueError, TypeError):
             credits = 0.0
 
-        if not grade or grade not in grade_points or credits <= 0:
+        if not grade or grade not in GRADE_POINTS or credits <= 0:
             continue
 
-        total_points += grade_points[grade] * credits
+        total_points += GRADE_POINTS[grade] * credits
+        total_credits += credits
+
+    if total_credits <= 0:
+        return None
+
+    return total_points / total_credits
+
+
+def compute_major_gpa_from_courses(courses: List[Dict[str, Any]]) -> Optional[float]:
+    """
+    Fallback major GPA computed from courses tagged with major-related requirements.
+
+    Filters courses where 'requirement_satisfied' contains 'Major' (case-insensitive),
+    then calculates GPA from those courses only.
+    """
+    total_points = 0.0
+    total_credits = 0.0
+
+    for course in courses:
+        # Check if this is a major course based on requirement_satisfied field
+        requirement = course.get("requirement_satisfied", "") or ""
+        if not isinstance(requirement, str):
+            requirement = str(requirement)
+
+        # Skip non-major courses
+        if "major" not in requirement.lower():
+            continue
+
+        grade = course.get("grade")
+        try:
+            credits = float(course.get("credits") or 0)
+        except (ValueError, TypeError):
+            credits = 0.0
+
+        if not grade or grade not in GRADE_POINTS or credits <= 0:
+            continue
+
+        total_points += GRADE_POINTS[grade] * credits
         total_credits += credits
 
     if total_credits <= 0:
@@ -370,18 +410,45 @@ JSON formatting rules:
 
             # Fallback: If GPA is missing or 0, calculate it from courses
             gpa = parsed.get("gpa", {})
-            if not gpa.get("overall") or gpa.get("overall") == 0:
-                print("DEBUG: GPA missing or 0, calculating from courses...")
-                courses_list = parsed.get("courses", {}).get("completed", [])
-                # If completed list is empty, try all_found
-                if not courses_list:
-                    courses_list = parsed.get("courses", {}).get("all_found", [])
+            courses_list = parsed.get("courses", {}).get("completed", [])
+            # If completed list is empty, try all_found
+            if not courses_list:
+                courses_list = parsed.get("courses", {}).get("all_found", [])
 
+            # Log LLM-extracted GPA values for debugging
+            print(f"DEBUG: LLM extracted GPA - overall: {gpa.get('overall')}, major: {gpa.get('major')}")
+
+            # Fallback for overall GPA
+            if not gpa.get("overall") or gpa.get("overall") == 0:
+                print("DEBUG: Overall GPA missing or 0, calculating from courses...")
                 calculated_overall = compute_gpa_from_courses(courses_list)
                 if calculated_overall is not None:
-                    gpa["overall"] = calculated_overall
-                    parsed["gpa"] = gpa
-                    print(f"DEBUG: Calculated GPA: {calculated_overall}")
+                    gpa["overall"] = round(calculated_overall, 2)
+                    print(f"DEBUG: Calculated overall GPA: {gpa['overall']}")
+
+            # Fallback for major GPA: calculate if missing, 0, or suspiciously equal to overall
+            overall_gpa = gpa.get("overall")
+            major_gpa = gpa.get("major")
+            needs_major_fallback = (
+                not major_gpa or
+                major_gpa == 0 or
+                (overall_gpa and major_gpa == overall_gpa)  # Likely LLM error if identical
+            )
+
+            if needs_major_fallback:
+                print("DEBUG: Major GPA missing, 0, or equals overall - calculating from major courses...")
+                calculated_major = compute_major_gpa_from_courses(courses_list)
+                if calculated_major is not None:
+                    gpa["major"] = round(calculated_major, 2)
+                    print(f"DEBUG: Calculated major GPA: {gpa['major']}")
+                elif major_gpa == overall_gpa:
+                    # If we couldn't calculate major GPA and it equals overall,
+                    # remove it to show "—" rather than a misleading duplicate value
+                    gpa.pop("major", None)
+                    print("DEBUG: Removed duplicate major GPA (no major courses found)")
+
+            parsed["gpa"] = gpa
+            print(f"DEBUG: Final GPA values - overall: {gpa.get('overall')}, major: {gpa.get('major')}")
 
             return parsed
         except json.JSONDecodeError as e:

@@ -1,0 +1,177 @@
+{
+  "program_name": "Electrical Engineering and Computer Science, M.S.",
+  "program_code": "MS_EECS",
+  "catalog_year": "2025-2026",
+  "total_credits_required": 30,
+  "description": "The M.S. in Electrical Engineering and Computer Science (EECS) program prepares students for careers in electrical engineering and computer science through rigorous coursework and research opportunities.",
+  "requirements": {
+    "ethics_core": {
+      "name": "Ethics Core",
+      "credits_required": 3,
+      "description": "Three credits of ENGR 501 (students take three 1-credit unique topics)",
+      "courses": [
+        {
+          "course_code": "ENGR 501",
+          "credits": 1,
+          "title": "Ethical Foundations of Engineering",
+          "notes": "Take 3 times with unique topics"
+        }
+      ],
+      "minimum_courses": 3,
+      "requirement_type": "core"
+    },
+    "leadership_core": {
+      "name": "Leadership Core",
+      "credits_required": 6,
+      "description": "Six credits of leadership courses",
+      "courses": [
+        {
+          "course_code": "ENGR 510",
+          "credits": 3,
+          "title": "Engineering and Computational Leadership"
+        },
+        {
+          "course_code": "ENGR 520",
+          "credits": 3,
+          "title": "Technical Writing and Communication"
+        }
+      ],
+      "minimum_courses": 2,
+      "requirement_type": "core"
+    },
+    "technical_core": {
+      "name": "Technical Core",
+      "credits_required": 15,
+      "description": "Fifteen credits from at least two of the three technical areas",
+      "minimum_areas": 2,
+      "requirement_type": "technical_core",
+      "areas": {
+        "computing_systems": {
+          "name": "Computing Systems",
+          "courses": [
+            {"course_code": "CPSC 510", "credits": 3, "title": "Computer Networks"},
+            {"course_code": "CPSC 511", "credits": 3, "title": "Cloud Computing"},
+            {"course_code": "CPSC 512", "credits": 3, "title": "Advanced Algorithms"},
+            {"course_code": "CPSC 513", "credits": 3, "title": "Computer Architecture"},
+            {"course_code": "CPSC 514", "credits": 3, "title": "Operating Systems"},
+            {"course_code": "CPSC 515", "credits": 3, "title": "Secure Computing"},
+            {"course_code": "CPSC 516", "credits": 3, "title": "Computer Graphics"},
+            {"course_code": "CPSC 570", "credits": 3, "title": "Artificial Intelligence"},
+            {"course_code": "CS 616", "credits": 3, "title": "Software Engineering"}
+          ]
+        },
+        "data_science_intelligent_systems": {
+          "name": "Data Science and Intelligent Systems",
+          "courses": [
+            {"course_code": "CPSC 530", "credits": 3, "title": "Data Mining"},
+            {"course_code": "CPSC 531", "credits": 3, "title": "Machine Learning"},
+            {"course_code": "CS 536", "credits": 3, "title": "Big Data Analytics"},
+            {"course_code": "CPSC 540", "credits": 3, "title": "Robotics"},
+            {"course_code": "CPSC 541", "credits": 3, "title": "Advanced Robotics"},
+            {"course_code": "CPSC 542", "credits": 3, "title": "Deep Learning"},
+            {"course_code": "CPSC 543", "credits": 3, "title": "Text Mining and Natural Language Processing"},
+            {"course_code": "CPSC 544", "credits": 3, "title": "Computer Vision"},
+            {"course_code": "CPSC 571", "credits": 3, "title": "Computational Intelligence"},
+            {"course_code": "CS 611", "credits": 3, "title": "Advanced Artificial Intelligence"},
+            {"course_code": "CS 614", "credits": 3, "title": "Advanced Machine Learning"},
+            {"course_code": "CS 635", "credits": 3, "title": "Neural Networks"},
+            {"course_code": "CS 685", "credits": 3, "title": "Advanced Computer Vision"}
+          ]
+        },
+        "electrical_systems": {
+          "name": "Electrical Systems",
+          "courses": [
+            {"course_code": "EENG 510", "credits": 3, "title": "Signal Processing"},
+            {"course_code": "EENG 511", "credits": 3, "title": "Control Systems and Applications"},
+            {"course_code": "EENG 512", "credits": 3, "title": "Digital Signal Processing"},
+            {"course_code": "EENG 513", "credits": 3, "title": "Embedded Systems"},
+            {"course_code": "EENG 514", "credits": 3, "title": "Advanced Integrated Circuit Design"},
+            {"course_code": "EENG 515", "credits": 3, "title": "Power Electronics"},
+            {"course_code": "EENG 516", "credits": 3, "title": "Telecommunications"},
+            {"course_code": "EENG 570", "credits": 3, "title": "Advanced Electrical Engineering Topics"},
+            {"course_code": "CS 615", "credits": 3, "title": "Hardware Design"},
+            {"course_code": "CS 660", "credits": 3, "title": "VLSI Design"}
+          ]
+        }
+      }
+    },
+    "mastery_demonstration": {
+      "name": "Mastery Demonstration",
+      "credits_required": 6,
+      "description": "Students may complete their Mastery Demonstration through either the Thesis Track (ENGR 698 for 6 credits) or Non-Thesis Track (2 additional Technical Core courses for 6 credits)",
+      "tracks": {
+        "thesis": {
+          "name": "Thesis Track",
+          "courses": [
+            {
+              "course_code": "ENGR 698",
+              "credits": 6,
+              "title": "Master's Thesis",
+              "notes": "Research thesis under faculty supervision"
+            }
+          ]
+        },
+        "non_thesis": {
+          "name": "Non-Thesis Track",
+          "description": "Two additional Technical Core courses from any of the three areas",
+          "credits": 6,
+          "source": "technical_core"
+        }
+      },
+      "requirement_type": "mastery"
+    }
+  },
+  "spring_2026_available_courses": {
+    "description": "Courses available for M.S. EECS students in Spring 2026",
+    "courses": [
+      {"course_code": "ENGR 501-01", "credits": 1, "title": "Ethical Foundations of Engineering", "category": "ethics_core"},
+      {"course_code": "ENGR 501-02", "credits": 1, "title": "Ethical Foundations of Engineering", "category": "ethics_core"},
+      {"course_code": "ENGR 520-01", "credits": 3, "title": "Technical Writing and Communication", "category": "leadership_core"},
+      {"course_code": "ENGR 520-02", "credits": 3, "title": "Technical Writing and Communication", "category": "leadership_core"},
+      {"course_code": "CPSC 542-01", "credits": 3, "title": "Deep Learning", "category": "technical_core", "area": "data_science_intelligent_systems"},
+      {"course_code": "CPSC 543-01", "credits": 3, "title": "Text Mining and Natural Language Processing", "category": "technical_core", "area": "data_science_intelligent_systems"},
+      {"course_code": "CPSC 570-01", "credits": 3, "title": "Artificial Intelligence", "category": "technical_core", "area": "computing_systems"},
+      {"course_code": "EENG 511-01", "credits": 3, "title": "Control Systems and Applications", "category": "technical_core", "area": "electrical_systems"},
+      {"course_code": "EENG 514-01", "credits": 3, "title": "Advanced Integrated Circuit Design", "category": "technical_core", "area": "electrical_systems"},
+      {"course_code": "CS 611-01", "credits": 3, "title": "Advanced Artificial Intelligence", "category": "technical_core", "area": "data_science_intelligent_systems"}
+    ]
+  },
+  "valid_course_codes": [
+    "ENGR 501",
+    "ENGR 510",
+    "ENGR 520",
+    "ENGR 698",
+    "CPSC 510",
+    "CPSC 511",
+    "CPSC 512",
+    "CPSC 513",
+    "CPSC 514",
+    "CPSC 515",
+    "CPSC 516",
+    "CPSC 530",
+    "CPSC 531",
+    "CPSC 540",
+    "CPSC 541",
+    "CPSC 542",
+    "CPSC 543",
+    "CPSC 544",
+    "CPSC 570",
+    "CPSC 571",
+    "CS 536",
+    "CS 611",
+    "CS 614",
+    "CS 615",
+    "CS 616",
+    "CS 635",
+    "CS 660",
+    "CS 685",
+    "EENG 510",
+    "EENG 511",
+    "EENG 512",
+    "EENG 513",
+    "EENG 514",
+    "EENG 515",
+    "EENG 516",
+    "EENG 570"
+  ]
+}

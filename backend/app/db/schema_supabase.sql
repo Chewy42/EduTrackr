@@ -45,6 +45,10 @@ create table if not exists public.program_evaluations (
   created_at timestamptz default now()
 );
 
+-- Ensure at most one program evaluation row per user
+create unique index if not exists idx_program_evaluations_user_unique
+  on public.program_evaluations(user_id);
+
 -- Evaluation Content (JSONB)
 create table if not exists public.program_evaluation_sections (
   id bigserial primary key,

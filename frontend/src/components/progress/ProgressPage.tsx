@@ -40,6 +40,27 @@ export interface GPA {
   major?: number;
 }
 
+/**
+ * Formats a GPA value for display with appropriate precision.
+ * Shows 3 decimal places if needed to distinguish similar values,
+ * otherwise shows 2 decimal places.
+ */
+function formatGPA(value: number | undefined, otherValue?: number): string {
+  if (value === undefined || value === null) return "—";
+
+  // If both values exist and round to the same 2-decimal value but are actually different,
+  // show 3 decimal places to distinguish them
+  if (otherValue !== undefined && otherValue !== null) {
+    const rounded2 = value.toFixed(2);
+    const otherRounded2 = otherValue.toFixed(2);
+    if (rounded2 === otherRounded2 && value !== otherValue) {
+      return value.toFixed(3);
+    }
+  }
+
+  return value.toFixed(2);
+}
+
 export interface ParsedData {
   student_info?: StudentInfo;
   gpa?: GPA;
@@ -111,11 +132,28 @@ export default function ProgressPage() {
   const courses = parsed?.courses;
   const creditRequirements = parsed?.credit_requirements || [];
 
-  // Calculate overall progress
-  const totalRequired = creditRequirements.reduce((sum, req) => sum + req.required, 0);
-  const totalEarned = creditRequirements.reduce((sum, req) => sum + req.earned, 0);
-  const totalInProgress = creditRequirements.reduce((sum, req) => sum + req.in_progress, 0);
-  const totalNeeded = creditRequirements.reduce((sum, req) => sum + req.needed, 0);
+  // Calculate overall progress from the primary "Degree credit"-style requirement
+  // Other requirements (Residency, Upper Division, GE areas, etc.) overlap with Degree credit,
+  // so we identify a single primary requirement to avoid double-counting aggregate credits.
+  //
+  // Heuristic:
+  //   1. Prefer an item whose label mentions "Degree credit" (or similar), if present
+  //   2. Otherwise, fall back to the requirement with the largest `required` value
+  //      (overall program credit requirement is almost always the maximum).
+  let primaryRequirement: CreditRequirement | undefined = creditRequirements.find(
+    (req) => req.label.toLowerCase().includes("degree credit")
+  );
+
+  if (!primaryRequirement && creditRequirements.length > 0) {
+    primaryRequirement = creditRequirements.reduce<CreditRequirement | undefined>((max, req) => {
+      if (!max) return req;
+      return req.required > max.required ? req : max;
+    }, undefined);
+  }
+  const totalRequired = primaryRequirement?.required ?? 0;
+  const totalEarned = primaryRequirement?.earned ?? 0;
+  const totalInProgress = primaryRequirement?.in_progress ?? 0;
+  const totalNeeded = primaryRequirement?.needed ?? 0;
   const overallProgress = totalRequired > 0 ? Math.round((totalEarned / totalRequired) * 100) : 0;
 
   if (loadState === "loading" || loadState === "idle") {
@@ -197,7 +235,7 @@ export default function ProgressPage() {
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
           <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Overall GPA</div>
           <div className="text-3xl font-bold text-slate-800">
-            {gpa?.overall?.toFixed(2) || "—"}
+            {formatGPA(gpa?.overall, gpa?.major)}
           </div>
           <div className="text-xs text-slate-500 mt-1">
             {gpa?.overall && gpa.overall >= 3.5 ? "🌟 Dean's List eligible" : gpa?.overall && gpa.overall >= 3.0 ? "✅ Good standing" : ""}
@@ -206,7 +244,7 @@ export default function ProgressPage() {
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
           <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Major GPA</div>
           <div className="text-3xl font-bold text-slate-800">
-            {gpa?.major?.toFixed(2) || "—"}
+            {formatGPA(gpa?.major, gpa?.overall)}
           </div>
           <div className="text-xs text-slate-500 mt-1">
             {gpa?.major && gpa.major >= 3.7 ? "🏆 Excellent" : gpa?.major && gpa.major >= 3.0 ? "👍 Solid performance" : ""}

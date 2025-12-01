@@ -6,30 +6,78 @@ from app.services.supabase_client import supabase_request
 
 BUCKET = "program-evaluations"
 
+
 def _get_user_id(email: str) -> Optional[str]:
-    resp = supabase_request("GET", f"/rest/v1/app_users?email=eq.{email}&select=id")
-    if resp.status_code == 200 and resp.json():
-        return resp.json()[0]["id"]
-    return None
+	resp = supabase_request("GET", f"/rest/v1/app_users?email=eq.{email}&select=id")
+	if resp.status_code == 200 and resp.json():
+		return resp.json()[0]["id"]
+	return None
 
-def _ensure_bucket_exists():
-    # Check if bucket exists
-    resp = supabase_request("GET", f"/storage/v1/bucket/{BUCKET}")
-    if resp.status_code == 200:
-        return
 
-    print(f"Bucket '{BUCKET}' not found. Creating...")
-    payload = {
-        "id": BUCKET,
-        "name": BUCKET,
-        "public": False,
-        "file_size_limit": 5242880, # 5MB
-        "allowed_mime_types": ["application/pdf"]
-    }
-    create_resp = supabase_request("POST", "/storage/v1/bucket", json=payload)
-    if create_resp.status_code not in (200, 201):
-        print(f"Failed to create bucket: {create_resp.text}")
-        # Proceeding might fail, but let the upload try or fail naturally
+def _ensure_bucket_exists() -> None:
+	"""Ensure the Supabase storage bucket for program evaluations exists."""
+	# Check if bucket exists
+	resp = supabase_request("GET", f"/storage/v1/bucket/{BUCKET}")
+	if resp.status_code == 200:
+		return
+
+	print(f"Bucket '{BUCKET}' not found. Creating...")
+	payload = {
+		"id": BUCKET,
+		"name": BUCKET,
+		"public": False,
+		"file_size_limit": 5242880,  # 5MB
+		"allowed_mime_types": ["application/pdf"],
+	}
+	create_resp = supabase_request("POST", "/storage/v1/bucket", json=payload)
+	if create_resp.status_code not in (200, 201):
+		print(f"Failed to create bucket: {create_resp.text}")
+		# Proceeding might fail, but let the upload try or fail naturally
+
+
+def delete_existing_evaluations_for_user(user_id: str) -> None:
+	"""Delete all existing program evaluations (and their files) for a user.
+
+	This keeps at most one program evaluation per user at a time. It is used
+	by the upload flow *before* inserting a new evaluation record.
+	"""
+	# Fetch all existing evaluations for this user
+	eval_resp = supabase_request(
+		"GET",
+		f"/rest/v1/program_evaluations?user_id=eq.{user_id}&select=id,storage_path",
+	)
+	if eval_resp.status_code != 200:
+		print(
+			f"WARNING: Failed to load existing evaluations for user {user_id}: "
+			f"{eval_resp.status_code} {eval_resp.text}"
+		)
+		return
+
+	rows = eval_resp.json() or []
+	for row in rows:
+		eval_id = row.get("id")
+		storage_path = row.get("storage_path")
+
+		if eval_id:
+			del_resp = supabase_request(
+				"DELETE", f"/rest/v1/program_evaluations?id=eq.{eval_id}"
+			)
+			if del_resp.status_code not in (200, 204):
+				print(
+					f"WARNING: Failed to delete program_evaluations row {eval_id}: "
+					f"{del_resp.status_code} {del_resp.text}"
+				)
+
+		if storage_path:
+			storage_resp = supabase_request(
+				"DELETE",
+				f"/storage/v1/object/{BUCKET}/{storage_path}",
+			)
+			if storage_resp.status_code not in (200, 204):
+				print(
+					f"WARNING: Failed to delete stored evaluation file {storage_path}: "
+					f"{storage_resp.status_code} {storage_resp.text}"
+				)
 
 def has_program_evaluation(email: str) -> bool:
     user_id = _get_user_id(email)

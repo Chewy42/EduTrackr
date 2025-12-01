@@ -228,6 +228,54 @@ class ScheduleValidation:
         }
 
 
+@dataclass
+class ScheduleSnapshot:
+    """
+    A saved schedule snapshot that captures the complete state of a user's schedule.
+    Allows users to save and restore schedules by name.
+    """
+    id: str                      # UUID string
+    user_id: str                 # User's UUID
+    name: str                    # User-defined snapshot name
+    class_ids: List[str]         # List of class IDs in the snapshot
+    total_credits: float         # Cached total credits at save time
+    class_count: int             # Number of classes at save time
+    created_at: str              # ISO timestamp
+    updated_at: str              # ISO timestamp
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to API response format with camelCase keys."""
+        return {
+            "id": self.id,
+            "userId": self.user_id,
+            "name": self.name,
+            "classIds": self.class_ids,
+            "totalCredits": self.total_credits,
+            "classCount": self.class_count,
+            "createdAt": self.created_at,
+            "updatedAt": self.updated_at,
+        }
+
+    @classmethod
+    def from_db_row(cls, row: Dict[str, Any]) -> "ScheduleSnapshot":
+        """Parse a database row into a ScheduleSnapshot instance."""
+        schedule_data = row.get("schedule_data", {})
+        if isinstance(schedule_data, str):
+            import json
+            schedule_data = json.loads(schedule_data)
+
+        return cls(
+            id=row.get("id", ""),
+            user_id=row.get("user_id", ""),
+            name=row.get("name", ""),
+            class_ids=schedule_data.get("class_ids", []),
+            total_credits=schedule_data.get("total_credits", 0.0),
+            class_count=schedule_data.get("class_count", 0),
+            created_at=row.get("created_at", ""),
+            updated_at=row.get("updated_at", ""),
+        )
+
+
 # Color mapping for requirement badges
 REQUIREMENT_COLORS = {
     RequirementType.MAJOR_CORE: "blue",

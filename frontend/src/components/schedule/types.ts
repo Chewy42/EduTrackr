@@ -138,6 +138,18 @@ export interface ScheduleState {
   warnings: string[];
 }
 
+// Persisted schedule snapshot (matches backend ScheduleSnapshot.to_dict)
+export interface ScheduleSnapshot {
+  id: string;
+  userId: string;
+  name: string;
+  classIds: string[];
+  totalCredits: number;
+  classCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Color palette for classes on calendar
 export const CLASS_COLORS = [
   '#FEE2E2', // red-100

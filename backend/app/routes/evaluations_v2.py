@@ -8,11 +8,12 @@ from flask import Blueprint, jsonify, request, send_file
 from app.services.auth_tokens import decode_app_token_from_request
 from app.services.pdf_parser_llm import parse_program_evaluation
 from app.services.evaluation_service import (
-    upload_evaluation_file,
-    save_metadata,
-    get_evaluation_file,
-    load_parsed_data,
-    has_program_evaluation,
+	upload_evaluation_file,
+	save_metadata,
+	get_evaluation_file,
+	load_parsed_data,
+	has_program_evaluation,
+	delete_existing_evaluations_for_user,
 )
 from app.services.supabase_client import supabase_request
 from app.services.chat_service import reset_onboarding_session
@@ -28,73 +29,87 @@ def _require_email_from_token() -> str:
 
 @program_evaluations_bp.route("/program-evaluations", methods=["POST"])
 def upload_program_evaluation():
-    try:
-        email = _require_email_from_token()
-    except pyjwt.ExpiredSignatureError:
-        return jsonify({"error": "Token expired"}), 401
-    except Exception:
-        return jsonify({"error": "Unauthorized"}), 401
+	try:
+		email = _require_email_from_token()
+	except pyjwt.ExpiredSignatureError:
+		return jsonify({"error": "Token expired"}), 401
+	except Exception:
+		return jsonify({"error": "Unauthorized"}), 401
 
-    if "file" not in request.files:
-        return jsonify({"error": "File is required."}), 400
+	if "file" not in request.files:
+		return jsonify({"error": "File is required."}), 400
 
-    file = request.files["file"]
-    if not file or file.filename == "":
-        return jsonify({"error": "File is required."}), 400
+	file = request.files["file"]
+	if not file or file.filename == "":
+		return jsonify({"error": "File is required."}), 400
 
-    filename = file.filename
-    if not filename.lower().endswith(".pdf"):
-        return jsonify({"error": "Only PDF files are supported."}), 400
+	filename = file.filename
+	if not filename.lower().endswith(".pdf"):
+		return jsonify({"error": "Only PDF files are supported."}), 400
 
-    try:
-        # 0. Get user_id and reset onboarding state
-        user_resp = supabase_request("GET", f"/rest/v1/app_users?email=eq.{email}&select=id")
-        if user_resp.status_code == 200 and user_resp.json():
-            user_id = user_resp.json()[0]["id"]
-            # Reset onboarding session (deletes chat history)
-            try:
-                reset_onboarding_session(user_id)
-            except Exception as e:
-                print(f"Failed to reset onboarding session: {e}")
-            # Reset onboarding_complete preference to false
-            try:
-                supabase_request(
-                    "PATCH",
-                    f"/rest/v1/user_preferences?user_id=eq.{user_id}",
-                    json={"onboarding_complete": False}
-                )
-            except Exception as e:
-                print(f"Failed to reset onboarding preference: {e}")
+	try:
+		# 0. Get user_id and reset onboarding state
+		user_resp = supabase_request(
+			"GET", f"/rest/v1/app_users?email=eq.{email}&select=id"
+		)
+		if user_resp.status_code == 200 and user_resp.json():
+			user_id = user_resp.json()[0]["id"]
+			# Reset onboarding session (deletes chat history)
+			try:
+				reset_onboarding_session(user_id)
+			except Exception as e:
+				print(f"Failed to reset onboarding session: {e}")
+			# Reset onboarding_complete preference to false
+			try:
+				supabase_request(
+					"PATCH",
+					f"/rest/v1/user_preferences?user_id=eq.{user_id}",
+					json={"onboarding_complete": False},
+				)
+			except Exception as e:
+				print(f"Failed to reset onboarding preference: {e}")
 
-        # 1. Upload to Supabase Storage
-        storage_path, size_bytes, file_bytes = upload_evaluation_file(file, email)
-        
-        # 2. Parse PDF from bytes
-        parsed_data: Dict[str, Any] = {}
-        try:
-            parsed_data = parse_program_evaluation(io.BytesIO(file_bytes))
-        except Exception as exc:
-            print(f"Parsing skipped due to error: {exc}")
-        
-        # 3. Save Metadata & Sections to Supabase DB
-        save_metadata(email, filename, storage_path, size_bytes, parsed_data)
+			# Ensure there is at most one evaluation per user by deleting any
+			# existing program_evaluations rows (and their files) before
+			# storing the new one.
+			try:
+				delete_existing_evaluations_for_user(user_id)
+			except Exception as e:
+				print(
+					f"Failed to delete existing evaluations for user {user_id}: {e}"
+				)
 
-        return jsonify({
-            "status": "ok",
-            "filename": filename,
-            "parsed": parsed_data,
-            "hasProgramEvaluation": True,
-            "onboardingComplete": False,
-        }), 201
+		# 1. Upload to Supabase Storage
+		storage_path, size_bytes, file_bytes = upload_evaluation_file(file, email)
 
-    except ValueError as e:
-        # User not found implies account deleted/invalid
-        return jsonify({"error": str(e)}), 401
-    except RuntimeError as e:
-        return jsonify({"error": str(e)}), 500
-    except Exception as e:
-        print(f"Upload error: {e}")
-        return jsonify({"error": "Unable to process upload."}), 500
+		# 2. Parse PDF from bytes
+		parsed_data: Dict[str, Any] = {}
+		try:
+			parsed_data = parse_program_evaluation(io.BytesIO(file_bytes))
+		except Exception as exc:
+			print(f"Parsing skipped due to error: {exc}")
+
+		# 3. Save Metadata & Sections to Supabase DB
+		save_metadata(email, filename, storage_path, size_bytes, parsed_data)
+
+		return jsonify(
+			{
+				"status": "ok",
+				"filename": filename,
+				"parsed": parsed_data,
+				"hasProgramEvaluation": True,
+				"onboardingComplete": False,
+			}
+		), 201
+
+	except ValueError as e:
+		# User not found implies account deleted/invalid
+		return jsonify({"error": str(e)}), 401
+	except RuntimeError as e:
+		return jsonify({"error": str(e)}), 500
+	except Exception as e:
+		print(f"Upload error: {e}")
+		return jsonify({"error": "Unable to process upload."}), 500
 
 
 @program_evaluations_bp.route("/program-evaluations", methods=["GET"])

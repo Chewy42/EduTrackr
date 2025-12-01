@@ -163,6 +163,21 @@ export default function RequirementsChecklist({ requirements }: RequirementsChec
   const completedCount = requirements.filter((r) => r.needed === 0).length;
   const totalCount = requirements.length;
 
+  // Identify the primary degree-level requirement for summary stats.
+  // This mirrors the logic in ProgressPage so that the top cards and
+  // the checklist footer stay in sync and both reflect the overall
+  // degree credit requirement instead of summing overlapping rules.
+  let primaryRequirement: CreditRequirement | undefined = requirements.find((req) =>
+    req.label.toLowerCase().includes("degree credit")
+  );
+
+  if (!primaryRequirement && requirements.length > 0) {
+    primaryRequirement = requirements.reduce<CreditRequirement | undefined>((max, req) => {
+      if (!max) return req;
+      return req.required > max.required ? req : max;
+    }, undefined);
+  }
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-4">
@@ -232,10 +247,10 @@ export default function RequirementsChecklist({ requirements }: RequirementsChec
       </div>
 
       {/* Summary footer */}
-      {requirements.length > 0 && (
+      {requirements.length > 0 && primaryRequirement && (
         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
           <span className="text-slate-500">
-            {requirements.reduce((sum, r) => sum + r.needed, 0).toFixed(0)} credits remaining
+            {primaryRequirement.needed.toFixed(0)} credits remaining
           </span>
           <span className="text-emerald-600 font-medium">
             {Math.round((completedCount / totalCount) * 100)}% complete

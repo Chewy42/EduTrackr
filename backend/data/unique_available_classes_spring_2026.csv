@@ -2250,3 +2250,6 @@ WGST 101-02
 WGST 450-01
 WGST 498-01
 WS 500B-01
+CPSC 542-01,3,MW,4:00pm - 5:15pm,Keck Center 156 Software Engin,"{'starts': 1769155200, 'ends': 1778310000, 'daysOccurring': {'M': [{'startTime': 960, 'endTime': 1035}], 'Tu': [], 'W': [{'startTime': 960, 'endTime': 1035}], 'Th': [], 'F': [], 'Sa': [], 'Su': []}}",Michael Fahy,85,spring2026,['Spring'],Deep Learning
+CPSC 570-01,3,TuTh,2:30pm - 3:45pm,Keck Center 130 Computation Sc,"{'starts': 1769155200, 'ends': 1778310000, 'daysOccurring': {'M': [], 'Tu': [{'startTime': 870, 'endTime': 945}], 'W': [], 'Th': [{'startTime': 870, 'endTime': 945}], 'F': [], 'Sa': [], 'Su': []}}",Erik Linstead,87,spring2026,['Spring'],Artificial Intelligence
+CS 611-01,3,MW,5:30pm - 6:45pm,Keck Center 156 Software Engin,"{'starts': 1769155200, 'ends': 1778310000, 'daysOccurring': {'M': [{'startTime': 1050, 'endTime': 1125}], 'Tu': [], 'W': [{'startTime': 1050, 'endTime': 1125}], 'Th': [], 'F': [], 'Sa': [], 'Su': []}}",Hesham El-Rewini,,spring2026,['Spring'],Advanced Artificial Intelligence

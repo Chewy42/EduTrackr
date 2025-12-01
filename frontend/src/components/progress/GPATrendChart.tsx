@@ -292,12 +292,20 @@ export default function GPATrendChart({ courses }: GPATrendChartProps) {
           </div>
         </div>
 
-        {/* Per-term semester summary */}
+        {/* Per-term semester summary - each term is hoverable with full stats */}
         <div className="mt-1 flex flex-wrap gap-2">
-          {chartData.map((d) => (
+          {chartData.map((d, index) => (
             <div
               key={d.fullTerm}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-600 flex items-center gap-2"
+              onMouseEnter={() => setHoveredPoint(index)}
+              onMouseLeave={() => setHoveredPoint(null)}
+              title={`${d.fullTerm}: Term ${d.termGpa.toFixed(2)}, Cumulative ${d.cumulativeGpa.toFixed(2)}, ${d.credits} credits, ${d.courseCount} courses`}
+              className={[
+                "px-2.5 py-1.5 rounded-lg border text-[11px] flex items-center gap-2 transition-colors cursor-default",
+                hoveredPoint === index
+                  ? "bg-blue-50 border-blue-200 text-slate-800"
+                  : "bg-slate-50 border-slate-200 text-slate-600",
+              ].join(" ")}
             >
               <span className="font-semibold text-slate-800">{d.fullTerm}</span>
               <span className="h-3 w-px bg-slate-200" />

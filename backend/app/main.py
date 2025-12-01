@@ -65,6 +65,20 @@ def _get_redirect_url() -> str:
 def health():
     return jsonify({'status': 'ok', 'timestamp': datetime.utcnow().isoformat()}), 200
 
+@app.route('/health/config', methods=['GET'])
+def health_config():
+    """Diagnostic endpoint to check if required env vars are configured (does not expose values)."""
+    from app.services.supabase_client import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY
+    return jsonify({
+        'status': 'ok',
+        'timestamp': datetime.utcnow().isoformat(),
+        'supabase_url_set': bool(SUPABASE_URL),
+        'supabase_anon_key_set': bool(SUPABASE_ANON_KEY),
+        'supabase_service_key_set': bool(SUPABASE_SERVICE_KEY),
+        'jwt_secret_is_default': os.getenv("JWT_SECRET_KEY", "dev-secret-key-change-in-production") == "dev-secret-key-change-in-production",
+        'debug_mode': os.getenv('DEBUG', 'true').lower() == 'true',
+    }), 200
+
 @app.route('/auth/sign-up', methods=['POST'])
 def sign_up():
     try:
@@ -203,10 +217,13 @@ def sign_in():
         }), 200
         
     except RuntimeError as config_err:
+        print(f"Sign-in RuntimeError: {config_err}")
         return jsonify({'error': str(config_err)}), 500
-    except requests.RequestException:
+    except requests.RequestException as req_err:
+        print(f"Sign-in RequestException: {req_err}")
         return jsonify({'error': 'Unable to reach Supabase authentication service.'}), 502
-    except Exception:
+    except Exception as e:
+        print(f"Sign-in unexpected error: {type(e).__name__}: {e}")
         return jsonify({'error': 'Incorrect email or password.'}), 500
 
 
@@ -358,6 +375,153 @@ def _save_onboarding_to_scheduling_preferences(user_id: str, answers: Dict[str, 
     else:
         # Insert new
         supabase_request("POST", "/rest/v1/scheduling_preferences", json=sched_payload)
+
+
+@app.route('/auth/scheduling-preferences', methods=['GET'])
+def get_scheduling_preferences_endpoint():
+    """Get the user's current scheduling preferences (from onboarding)."""
+    try:
+        payload = decode_app_token_from_request()
+        email = payload.get('email', '')
+        if not email:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        # Get user_id
+        user_resp = supabase_request("GET", f"/rest/v1/app_users?email=eq.{email}&select=id")
+        if user_resp.status_code != 200 or not user_resp.json():
+            return jsonify({'error': 'User not found'}), 404
+        user_id = user_resp.json()[0]['id']
+
+        # Get scheduling preferences
+        prefs_resp = supabase_request("GET", f"/rest/v1/scheduling_preferences?user_id=eq.{user_id}&select=*")
+        if prefs_resp.status_code == 200 and prefs_resp.json():
+            prefs = prefs_resp.json()[0]
+            # Map back to frontend format
+            result = {
+                'planning_mode': prefs.get('planning_mode'),
+                'credit_load': _reverse_credit_map(prefs.get('preferred_credits_min'), prefs.get('preferred_credits_max')),
+                'schedule_preference': _reverse_time_map(prefs.get('preferred_time_of_day')),
+                'work_status': prefs.get('work_status'),
+                'priority': _reverse_priority_map(prefs.get('priority_focus'))
+            }
+            return jsonify(result), 200
+        
+        return jsonify({}), 200
+
+    except pyjwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token expired'}), 401
+    except Exception as e:
+        print(f"Error getting scheduling preferences: {e}")
+        return jsonify({'error': 'Invalid token'}), 401
+
+
+@app.route('/auth/scheduling-preferences', methods=['PATCH'])
+def update_scheduling_preferences_endpoint():
+    """Update the user's scheduling preferences."""
+    try:
+        payload = decode_app_token_from_request()
+        email = payload.get('email', '')
+        if not email:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        data = request.get_json() or {}
+
+        # Get user_id
+        user_resp = supabase_request("GET", f"/rest/v1/app_users?email=eq.{email}&select=id")
+        if user_resp.status_code != 200 or not user_resp.json():
+            return jsonify({'error': 'User not found'}), 404
+        user_id = user_resp.json()[0]['id']
+
+        # Build update payload using the same mapping as onboarding
+        sched_payload = {
+            "updated_at": datetime.utcnow().isoformat()
+        }
+
+        # Map planning_mode
+        if 'planning_mode' in data and data['planning_mode']:
+            sched_payload['planning_mode'] = data['planning_mode']
+
+        # Map credit_load to preferred_credits_min/max
+        credit_map = {
+            'light': (9, 12),
+            'standard': (12, 15),
+            'heavy': (15, 18)
+        }
+        if 'credit_load' in data and data['credit_load'] in credit_map:
+            min_cr, max_cr = credit_map[data['credit_load']]
+            sched_payload['preferred_credits_min'] = min_cr
+            sched_payload['preferred_credits_max'] = max_cr
+
+        # Map schedule_preference to preferred_time_of_day
+        time_map = {
+            'mornings': 'morning',
+            'afternoons': 'afternoon',
+            'flexible': 'flexible'
+        }
+        if 'schedule_preference' in data and data['schedule_preference'] in time_map:
+            sched_payload['preferred_time_of_day'] = time_map[data['schedule_preference']]
+
+        # Map work_status
+        if 'work_status' in data and data['work_status']:
+            sched_payload['work_status'] = data['work_status']
+
+        # Map priority to priority_focus
+        priority_map = {
+            'major': 'major_requirements',
+            'electives': 'electives',
+            'graduate': 'graduation_timeline'
+        }
+        if 'priority' in data and data['priority'] in priority_map:
+            sched_payload['priority_focus'] = priority_map[data['priority']]
+
+        # Check if row exists
+        existing_resp = supabase_request("GET", f"/rest/v1/scheduling_preferences?user_id=eq.{user_id}&select=id")
+        if existing_resp.status_code == 200 and existing_resp.json():
+            # Update existing
+            supabase_request("PATCH", f"/rest/v1/scheduling_preferences?user_id=eq.{user_id}", json=sched_payload)
+        else:
+            # Insert new with user_id
+            sched_payload['user_id'] = user_id
+            supabase_request("POST", "/rest/v1/scheduling_preferences", json=sched_payload)
+
+        return jsonify({'status': 'ok'}), 200
+
+    except pyjwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token expired'}), 401
+    except Exception as e:
+        print(f"Error updating scheduling preferences: {e}")
+        return jsonify({'error': 'Failed to update preferences'}), 500
+
+
+def _reverse_credit_map(min_credits: int | None, max_credits: int | None) -> str | None:
+    """Map credits back to the onboarding value."""
+    if min_credits == 9 and max_credits == 12:
+        return 'light'
+    if min_credits == 12 and max_credits == 15:
+        return 'standard'
+    if min_credits == 15 and max_credits == 18:
+        return 'heavy'
+    return None
+
+
+def _reverse_time_map(time_of_day: str | None) -> str | None:
+    """Map time_of_day back to the onboarding value."""
+    reverse_map = {
+        'morning': 'mornings',
+        'afternoon': 'afternoons',
+        'flexible': 'flexible'
+    }
+    return reverse_map.get(time_of_day)
+
+
+def _reverse_priority_map(priority_focus: str | None) -> str | None:
+    """Map priority_focus back to the onboarding value."""
+    reverse_map = {
+        'major_requirements': 'major',
+        'electives': 'electives',
+        'graduation_timeline': 'graduate'
+    }
+    return reverse_map.get(priority_focus)
 
 
 app.register_blueprint(program_evaluations_bp)

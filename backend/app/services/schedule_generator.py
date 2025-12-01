@@ -12,6 +12,12 @@ from app.services.degree_requirements_matcher import extract_user_requirements, 
 from app.services.program_evaluation_store import load_parsed_payload
 from app.services.evaluation_service import load_parsed_data as load_parsed_data_from_supabase
 from app.services.chat_service import get_scheduling_preferences
+from app.services.ms_eecs_requirements import (
+    is_eecs_program,
+    get_valid_course_codes as get_eecs_valid_courses,
+    get_eecs_curriculum_prompt_context,
+    get_spring_2026_eecs_courses_prompt,
+)
 from app.models.schedule_types import DegreeRequirement, ClassSection
 
 # Set up logging
@@ -34,6 +40,7 @@ DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CLASSES_CSV_PATH = DATA_DIR / "available_classes_spring_2026.csv"
 CATALOG_JSON_PATH = DATA_DIR / "chapman_catalogs_full.json"
 COURSE_MAPPING_PATH = DATA_DIR / "course_to_program_mapping.json"
+MS_EECS_REQUIREMENTS_PATH = DATA_DIR / "ms_eecs_requirements.json"
 
 # Default preferences when user hasn't set any
 DEFAULT_PREFERENCES = {
@@ -265,6 +272,24 @@ def _is_administrative_placeholder_course(cls) -> bool:
     return False
 
 
+def _has_meeting_times(cls: ClassSection) -> bool:
+    """
+    Check if a class has concrete meeting times (not TBA/arranged).
+
+    Returns False for classes with no scheduled meeting times, such as:
+    - Thesis sections (ENGR 698, CS 698, etc.)
+    - Independent study courses
+    - Classes marked as "TBA" or "Arranged"
+
+    These classes cannot be placed on a weekly schedule and should be
+    excluded from LLM-based schedule generation.
+    """
+    days_occurring = cls.occurrence_data.days_occurring
+    if days_occurring is None:
+        return False
+    return len(days_occurring.get_active_days()) > 0
+
+
 def _get_completed_course_codes(email: str) -> set:
     """
     Get the set of course codes (e.g., "ENGR 520") that the student has already
@@ -378,9 +403,11 @@ def _filter_classes_by_requirements(
     # 1. Exact course code match (subject + number)
     # 2. Subject match for elective requirements
     # 3. Course is in the program's valid courses (from catalog mapping)
+    # 4. For graduate students: 500+ level courses from technical subjects
     filtered_classes = []
     excluded_count = 0
     admin_excluded_count = 0
+    tba_excluded_count = 0
     program_match_count = 0
 
     for cls in all_classes:
@@ -396,6 +423,13 @@ def _filter_classes_by_requirements(
         if _is_administrative_placeholder_course(cls):
             logger.debug(f"Excluding administrative placeholder: {cls.id} - {cls.title}")
             admin_excluded_count += 1
+            continue
+
+        # Skip TBA/arranged classes with no concrete meeting times
+        # These cannot be placed on a weekly schedule
+        if not _has_meeting_times(cls):
+            logger.debug(f"Excluding TBA/unscheduled class: {cls.id} - {cls.title}")
+            tba_excluded_count += 1
             continue
 
         # For graduate students, skip undergraduate courses (< 500 level)
@@ -418,10 +452,33 @@ def _filter_classes_by_requirements(
             program_match_count += 1
             continue
 
+        # For M.S. EECS students, ONLY allow courses from the curated valid course codes list.
+        # This prevents courses from other programs (like Computational Data Science's CS 533, CS 770)
+        # from being incorrectly recommended to EECS students.
+        # We skip the generic technical elective fallback if we have EECS-specific valid courses.
+        is_eecs_student = is_eecs_program(program_name)
+        if is_eecs_student:
+            # For EECS students, use the curated valid_course_codes list exclusively
+            eecs_valid_codes = get_eecs_valid_courses()
+            if course_code in eecs_valid_codes:
+                filtered_classes.append(cls)
+                program_match_count += 1
+            # Do NOT fall back to generic technical elective matching for EECS
+            continue
+
+        # For NON-EECS graduate students, include 500+ level courses from technical subjects
+        # as potential electives even if not explicitly listed in requirements
+        if is_graduate_student and cls.subject in TECHNICAL_CORE_ELECTIVE_SUBJECTS:
+            if _is_graduate_level_course(cls.number):
+                filtered_classes.append(cls)
+                program_match_count += 1
+                continue
+
     logger.info(f"Filtered from {len(all_classes)} to {len(filtered_classes)} relevant classes")
     logger.info(f"  - Excluded {excluded_count} completed courses")
     logger.info(f"  - Excluded {admin_excluded_count} admin placeholders")
-    logger.info(f"  - Added {program_match_count} courses via program mapping")
+    logger.info(f"  - Excluded {tba_excluded_count} TBA/unscheduled classes")
+    logger.info(f"  - Added {program_match_count} courses via program mapping/technical electives")
 
     # Explicitly log whether ENGR 501 made it through the filter
     eng501_in_filtered = any(f"{cls.subject} {cls.number}" == "ENGR 501" for cls in filtered_classes)
@@ -528,8 +585,10 @@ def _get_student_program_info(email: str) -> Dict[str, Any]:
     student_info = parsed_data.get("student_info", {})
 
     # Extract program name - try multiple fields
+    # NOTE: The PDF parser schema uses "program" as the key, not "program_name"
     program_name = (
-        student_info.get("program_name")
+        student_info.get("program")  # Primary key from PDF parser schema
+        or student_info.get("program_name")
         or student_info.get("major")
         or student_info.get("degree_program")
         or ""
@@ -538,10 +597,12 @@ def _get_student_program_info(email: str) -> Dict[str, Any]:
     # Extract degree type
     degree_type = student_info.get("degree_type", "").upper()
 
-    # Determine if graduate
-    class_level = student_info.get("class_level", "").lower()
+    # Determine if graduate student based on class level or degree type
+    # Note: Use exact match for class_level to avoid "undergraduate" matching "graduate"
+    class_level = student_info.get("class_level", "").lower().strip()
     graduate_degrees = {"M.S.", "M.A.", "MBA", "PH.D.", "PHD", "ED.D.", "J.D."}
-    is_graduate = "graduate" in class_level or degree_type in graduate_degrees
+    graduate_class_levels = {"graduate", "grad", "masters", "doctoral", "phd"}
+    is_graduate = class_level in graduate_class_levels or degree_type in graduate_degrees
 
     logger.info(
         "Student program info for %s -> program_name='%s', degree_type='%s', class_level='%s', is_graduate=%s",
@@ -729,6 +790,18 @@ def generate_schedule(user_id: str, email: str) -> Dict[str, Any]:
         'view_progress': 'reviewing progress and planning next steps'
     }.get(planning_mode, 'planning next semester')
 
+    # Check if student is in MS EECS program and get curriculum context
+    is_eecs_student = is_eecs_program(program_name)
+    eecs_curriculum_context = ""
+    eecs_spring_2026_context = ""
+    if is_eecs_student:
+        logger.info(f"Student is in M.S. EECS program - loading curriculum context")
+        eecs_curriculum_context = get_eecs_curriculum_prompt_context()
+        eecs_spring_2026_context = get_spring_2026_eecs_courses_prompt()
+        # Also add EECS-specific course codes to the valid courses
+        eecs_valid_courses = get_eecs_valid_courses()
+        logger.info(f"Loaded {len(eecs_valid_courses)} valid EECS course codes")
+
     # Build optimized prompt with FILTERED class data only
     # Step 1: Filter classes to only those matching degree requirements, academic level, and not already taken
     # Also uses course-to-program mapping to include courses valid for the student's degree program
@@ -782,6 +855,27 @@ def generate_schedule(user_id: str, email: str) -> Dict[str, Any]:
     min_credits = prefs.get('preferred_credits_min', 12)
     max_credits = prefs.get('preferred_credits_max', 15)
 
+    # Build EECS-specific curriculum context if applicable
+    eecs_program_info = ""
+    if is_eecs_student and eecs_curriculum_context:
+        eecs_program_info = f"""
+=== M.S. EECS CURRICULUM INFORMATION ===
+This student is in the M.S. in Electrical Engineering and Computer Science (EECS) program.
+
+{eecs_curriculum_context}
+
+{eecs_spring_2026_context}
+
+IMPORTANT FOR EECS STUDENTS:
+- Ethics Core: ENGR 501 (take 3 different sections for 3 total credits)
+- Leadership Core: ENGR 510 and ENGR 520 (both required)
+- Technical Core: Choose courses from Computing Systems, Data Science/Intelligent Systems, or Electrical Systems
+- Must take courses from at least 2 Technical Core areas
+- CPSC 542, CPSC 543, CPSC 570, EENG 511, EENG 514, CS 611 are recommended Technical Core electives for Spring 2026
+=== END EECS CURRICULUM ===
+
+"""
+
     prompt = f"""You are an expert academic schedule builder. Your task is to select classes for a student's upcoming semester.
 
 CRITICAL RULES (MUST FOLLOW):
@@ -794,7 +888,7 @@ CRITICAL RULES (MUST FOLLOW):
    - If total exceeds {max_credits}, you MUST remove classes
    - This is a HARD REQUIREMENT - do NOT return schedules outside this range
 
-Student Profile:
+{eecs_program_info}Student Profile:
 - Planning Goal: {planning_context}
 - Work Status: Student {work_context}
 - Time Preference: {time_pref} classes preferred

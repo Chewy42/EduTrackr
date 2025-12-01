@@ -1,20 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FiSearch, FiFilter, FiX, FiLoader, FiChevronDown } from 'react-icons/fi';
 import { searchClasses, getSubjects } from '../../lib/scheduleApi';
-import { ClassSection, ClassSearchParams } from './types';
+import { ClassSection, ClassSearchParams, hasMeetingTimes } from './types';
 import ClassCard from './ClassCard';
 import { useAuth } from '../../auth/AuthContext';
 
 interface ClassSearchSidebarProps {
-  onAddClass: (classData: ClassSection) => void;
-  addedClassIds: Set<string>;
-  conflicts: Record<string, string>; // classId -> conflict message
+	onAddClass: (classData: ClassSection) => void;
+	onRemoveClass: (classId: string) => void;
+	addedClassIds: Set<string>;
+	conflicts: Record<string, string>; // classId -> conflict message
 }
 
 export default function ClassSearchSidebar({
-  onAddClass,
-  addedClassIds,
-  conflicts,
+	onAddClass,
+	onRemoveClass,
+	addedClassIds,
+	conflicts,
 }: ClassSearchSidebarProps) {
   const { jwt } = useAuth();
   const [query, setQuery] = useState('');
@@ -33,7 +35,7 @@ export default function ClassSearchSidebar({
   }, []);
 
   // Search function
-  const handleSearch = useCallback(async () => {
+	  const handleSearch = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -43,9 +45,11 @@ export default function ClassSearchSidebar({
         limit: 50,
         includeRequirements: true,
       };
-      
-      const response = await searchClasses(params, jwt || undefined);
-      setResults(response.classes);
+	      
+	      const response = await searchClasses(params, jwt || undefined);
+	      // Exclude TBA / arranged sections that lack concrete meeting times
+	      const filtered = response.classes.filter(cls => hasMeetingTimes(cls));
+	      setResults(filtered);
     } catch (err) {
       setError('Failed to load classes. Please try again.');
       console.error(err);
@@ -121,18 +125,19 @@ export default function ClassSearchSidebar({
           <div className="text-center py-8 text-slate-400 text-sm">
             No classes found matching your criteria.
           </div>
-        ) : (
-          results.map(cls => (
-            <ClassCard
-              key={cls.id}
-              classData={cls}
-              onAdd={onAddClass}
-              isAdded={addedClassIds.has(cls.id)}
-              conflictMessage={conflicts[cls.id]}
-              compact
-            />
-          ))
-        )}
+	        ) : (
+	          results.map(cls => (
+	            <ClassCard
+	              key={cls.id}
+	              classData={cls}
+	              onAdd={onAddClass}
+	              onRemove={onRemoveClass}
+	              isAdded={addedClassIds.has(cls.id)}
+	              conflictMessage={conflicts[cls.id]}
+	              compact
+	            />
+	          ))
+	        )}
       </div>
       
       {/* Footer Stats */}

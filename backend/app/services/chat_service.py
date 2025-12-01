@@ -103,6 +103,53 @@ def list_user_sessions(user_id: str) -> List[Dict[str, Any]]:
     return []
 
 
+def delete_chat_session(user_id: str, session_id: str) -> None:
+    """Delete a single chat session belonging to the user.
+
+    We first verify the session belongs to the given user to avoid accidentally
+    deleting another user's data when running with the Supabase service role.
+    The operation is idempotent: if the session does not exist or does not
+    belong to the user, it is treated as a no-op.
+    """
+    # Verify ownership
+    verify_resp = supabase_request(
+        "GET",
+        f"/rest/v1/chat_sessions?id=eq.{session_id}&user_id=eq.{user_id}&select=id"
+    )
+    if verify_resp.status_code != 200 or not verify_resp.json():
+        return
+
+    supabase_request("DELETE", f"/rest/v1/chat_sessions?id=eq.{session_id}")
+
+
+def clear_explore_sessions(user_id: str, keep_session_id: Optional[str] = None) -> int:
+    """Delete all "Explore My Options" sessions for a user.
+
+    Optionally keeps a single session (e.g., the currently active one) if
+    keep_session_id is provided. Returns the number of sessions deleted.
+    """
+    # Fetch only this user's Explore sessions so we never touch other users'
+    # data even though we operate with the service role.
+    resp = supabase_request(
+        "GET",
+        f"/rest/v1/chat_sessions?user_id=eq.{user_id}&title=eq.Explore%20My%20Options&select=id"
+    )
+    if resp.status_code != 200 or not resp.json():
+        return 0
+
+    deleted = 0
+    for row in resp.json():
+        sid = row.get("id")
+        if not sid:
+            continue
+        if keep_session_id and sid == keep_session_id:
+            continue
+        supabase_request("DELETE", f"/rest/v1/chat_sessions?id=eq.{sid}")
+        deleted += 1
+
+    return deleted
+
+
 def get_or_create_onboarding_session(user_id: str, email: str) -> str:
     """Finds an existing onboarding session or creates a new one.
 
@@ -744,37 +791,61 @@ def generate_reply(
     degree_status = _compute_degree_status(parsed_fields, catalog_context)
     degree_status_str = json.dumps(degree_status, indent=2) if degree_status else "[]"
 
+    history = get_chat_history(session_id)
+    has_history = len(history) > 0
+
+    first_message_instruction = ""
+    if not has_history:
+        first_message_instruction = """
+**FIRST MESSAGE REQUIREMENT**:
+This is your first message to the student. You MUST introduce yourself clearly:
+1. State that you are an **AI academic planning assistant** (not a human, not affiliated with Chapman staff)
+2. Briefly explain your **capabilities**: helping explore degree progress, course planning, career paths, and academic questions based on their uploaded degree audit
+3. Mention your **limitations**: you cannot register for classes, access live university systems, or guarantee accuracy — always verify important decisions with an official advisor
+4. Keep the intro friendly but concise, then ask how you can help today
+"""
+
     system_prompt = f"""
-You are a helpful academic advisor for Chapman University students.
+You are an **AI academic planning assistant** — a helpful tool designed to support students in exploring their academic journey. You are NOT a human, NOT a Chapman University employee, and NOT an official advisor.
 
-Student: {student_name or 'Student'}
-Program: {student_info.get('program', 'Unknown')}
-Catalog Year: {student_info.get('catalog_year', 'Unknown')}
+**YOUR IDENTITY**:
+- You are an AI agent built to help students understand their degree progress and explore options
+- You have access to the student's uploaded degree audit data (shown below)
+- You cannot access live university systems, register for classes, or make official decisions
+- Students should always verify important decisions with their official academic advisor
 
-**DEGREE STATUS**:
+**STUDENT CONTEXT**:
+- Name: {student_name or 'Student'}
+- Program: {student_info.get('program', 'Unknown')}
+- Catalog Year: {student_info.get('catalog_year', 'Unknown')}
+
+**DEGREE STATUS** (from uploaded audit):
 {degree_status_str}
 
 **CATALOG REQUIREMENTS**:
 {catalog_str}
+{first_message_instruction}
+**RESPONSE GUIDELINES**:
+- Be warm, helpful, and genuinely curious about the student's goals
+- Use **bold text** to highlight important information, requirements, or action items
+- Keep responses concise (under 150 words) but complete — never cut off mid-sentence
+- Always end with an **open-ended question** to encourage the student to share more
+- Be transparent about uncertainty — say "based on your audit data" rather than making definitive claims
 
-**INSTRUCTIONS**:
-- Be helpful and encouraging
-- Answer questions about their degree progress
-- Keep responses concise (under 150 words)
-- Use markdown for formatting
-
-**OUTPUT FORMAT (XML)**:
+**REQUIRED OUTPUT FORMAT (XML)**:
+You MUST respond in this exact XML format with exactly 3 follow-up suggestions:
 <response>
-  <message>Your response here</message>
+  <message>Your complete response here with **bold** for emphasis, ending with an open-ended question.</message>
   <suggestions>
-    <suggestion>Follow-up 1</suggestion>
-    <suggestion>Follow-up 2</suggestion>
-    <suggestion>Follow-up 3</suggestion>
+    <suggestion>First quick-reply option</suggestion>
+    <suggestion>Second quick-reply option</suggestion>
+    <suggestion>Third quick-reply option</suggestion>
   </suggestions>
 </response>
+
+Suggestions should be short, tappable phrases (under 40 characters) that help continue the conversation.
 """
 
-    history = get_chat_history(session_id)
     messages = [{"role": "system", "content": system_prompt}] + history
     if user_message:
         messages.append({"role": "user", "content": user_message})
@@ -816,7 +887,7 @@ Catalog Year: {student_info.get('catalog_year', 'Unknown')}
     try:
         if not client.api_key:
             reply_text = "I'm ready to help, but my configuration needs attention."
-            suggestions: List[str] = []
+            suggestions: List[str] = ["Plan my next semester", "Show my degree progress", "What courses do I need?"]
         else:
             response = client.chat.completions.create(
                 model=MODEL,
@@ -825,6 +896,10 @@ Catalog Year: {student_info.get('catalog_year', 'Unknown')}
             )
             content = response.choices[0].message.content or ""
             reply_text, suggestions = _parse_xml_envelope(content)
+            
+            # Ensure we always have suggestions
+            if not suggestions:
+                suggestions = ["What courses do I need?", "Show my progress", "Help me plan"]
 
     except Exception as e:
         print(f"OpenAI API Error: {e}")
@@ -901,35 +976,60 @@ def generate_reply_stream(
     catalog_str = json.dumps(catalog_context, indent=2) if catalog_context else "null"
     degree_status = _compute_degree_status(parsed_fields, catalog_context)
     degree_status_str = json.dumps(degree_status, indent=2) if degree_status else "[]"
-    
+
+    history = get_chat_history(session_id)
+    has_history = len(history) > 0
+
+    first_message_instruction = ""
+    if not has_history:
+        first_message_instruction = """
+**FIRST MESSAGE REQUIREMENT**:
+This is your first message to the student. You MUST introduce yourself clearly:
+1. State that you are an **AI academic planning assistant** (not a human, not affiliated with Chapman staff)
+2. Briefly explain your **capabilities**: helping explore degree progress, course planning, career paths, and academic questions based on their uploaded degree audit
+3. Mention your **limitations**: you cannot register for classes, access live university systems, or guarantee accuracy — always verify important decisions with an official advisor
+4. Keep the intro friendly but concise, then ask how you can help today
+"""
+
     system_prompt = f"""
-You are a helpful academic advisor for Chapman University students.
+You are an **AI academic planning assistant** — a helpful tool designed to support students in exploring their academic journey. You are NOT a human, NOT a Chapman University employee, and NOT an official advisor.
 
-Student: {student_name or 'Student'}
-Program: {student_info.get('program', 'Unknown')}
-Catalog Year: {student_info.get('catalog_year', 'Unknown')}
+**YOUR IDENTITY**:
+- You are an AI agent built to help students understand their degree progress and explore options
+- You have access to the student's uploaded degree audit data (shown below)
+- You cannot access live university systems, register for classes, or make official decisions
+- Students should always verify important decisions with their official academic advisor
 
-**DEGREE STATUS**:
+**STUDENT CONTEXT**:
+- Name: {student_name or 'Student'}
+- Program: {student_info.get('program', 'Unknown')}
+- Catalog Year: {student_info.get('catalog_year', 'Unknown')}
+
+**DEGREE STATUS** (from uploaded audit):
 {degree_status_str}
 
 **CATALOG REQUIREMENTS**:
 {catalog_str}
+{first_message_instruction}
+**RESPONSE GUIDELINES**:
+- Be warm, helpful, and genuinely curious about the student's goals
+- Use **bold text** to highlight important information, requirements, or action items
+- Keep responses concise (under 150 words) but complete — never cut off mid-sentence
+- Always end with an **open-ended question** to encourage the student to share more
+- Be transparent about uncertainty — say "based on your audit data" rather than making definitive claims
 
-**INSTRUCTIONS**:
-- Be helpful and encouraging
-- Answer questions about their degree progress
-- Keep responses concise (under 150 words)
-- Use markdown for formatting
+**REQUIRED OUTPUT FORMAT**:
+After your complete response (with **bold** for emphasis, ending with an open-ended question), include exactly 3 quick-reply suggestions:
 
-Respond naturally. At the end, optionally add:
 [SUGGESTIONS]
-Suggestion 1
-Suggestion 2
-Suggestion 3
+First quick-reply option
+Second quick-reply option
+Third quick-reply option
 [/SUGGESTIONS]
+
+Suggestions should be short, tappable phrases (under 40 characters) that help continue the conversation.
 """
 
-    history = get_chat_history(session_id)
     messages = [{"role": "system", "content": system_prompt}] + history
     if user_message:
         messages.append({"role": "user", "content": user_message})

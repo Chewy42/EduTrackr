@@ -31,6 +31,7 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const activeSessionRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isSendingRef = useRef(false); // Track if we're actively sending to prevent history clear
 
   const scrollToBottom = useCallback((smooth = true) => {
     if (scrollRef.current) {
@@ -44,38 +45,43 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
   // Load session history when sessionId changes
   useEffect(() => {
     if (!jwt) return;
-    
+
+    // Skip fetching history if we're in the middle of sending a message
+    // (this means we just created a new session and already have the user's message in state)
+    // Use ref instead of state to avoid stale closure issues
+    if (isSendingRef.current) return;
+
     // Cancel any in-flight requests when switching sessions
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    
+
     // Track the current session to avoid race conditions
     activeSessionRef.current = sessionId;
-    
+
     if (sessionId) {
       // Switching to an existing session - clear immediately for snappy UI
       setMessages([]);
       setSuggestions([]);
       setStreamingContent("");
       setHistoryLoading(true);
-      
+
       const controller = new AbortController();
       abortControllerRef.current = controller;
-      
+
       fetch(`/api/chat/history/${sessionId}`, {
         headers: { Authorization: `Bearer ${jwt}` },
         signal: controller.signal
       })
         .then(res => res.json())
         .then(data => {
-          // Only update if this is still the active session
-          if (activeSessionRef.current === sessionId && data.messages) {
-            setMessages(data.messages.map((m: any) => ({ 
-              role: m.role, 
-              content: m.content, 
-              timestamp: new Date() 
+          // Only update if this is still the active session and not actively sending
+          if (activeSessionRef.current === sessionId && data.messages && !isSendingRef.current) {
+            setMessages(data.messages.map((m: any) => ({
+              role: m.role,
+              content: m.content,
+              timestamp: new Date()
             })));
           }
         })
@@ -109,7 +115,10 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
 
     const userMsg = textToSend.trim();
     const currentSessionId = sessionId; // Capture current session ID
-    
+
+    // Mark that we're sending to prevent useEffect from clearing messages
+    isSendingRef.current = true;
+
     setInput("");
     setSuggestions([]);
     setMessages(prev => [...prev, { role: "user", content: userMsg, timestamp: new Date() }]);
@@ -181,6 +190,9 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
                   .replace(/\[\/RESPONSE\]/gi, "")
                   .trim();
                 setStreamingContent(displayContent);
+              } else if (parsed.type === "suggestions" && Array.isArray(parsed.content)) {
+                // Backend sent suggestions as a separate event
+                setSuggestions(parsed.content.slice(0, 3));
               } else if (parsed.type === "session_id" && parsed.content && !currentSessionId) {
                 // Backend returned a new session ID - sync it up
                 onSessionChange(parsed.content);
@@ -195,6 +207,7 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
       setMessages(prev => [...prev, { role: "assistant", content: "Sorry, I encountered an error. Please try again.", timestamp: new Date() }]);
     } finally {
       setLoading(false);
+      isSendingRef.current = false;
     }
   };
 
@@ -346,7 +359,7 @@ export default function ExploreChat({ sessionId, onSessionChange }: Props) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about your academic journey..."
-            className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-slate-800 placeholder:text-slate-400 px-2"
+	            className="flex-1 bg-transparent border-none outline-none focus:outline-none focus-visible:outline-none focus:ring-0 text-sm text-slate-800 placeholder:text-slate-400 px-2"
             disabled={loading}
           />
           <button

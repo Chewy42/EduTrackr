@@ -30,9 +30,19 @@ from app.models.schedule_types import (
     ClassSection,
     DegreeRequirement,
     RequirementType,
+    ScheduleSnapshot,
     TimeSlot,
     DaysOccurring,
     OccurrenceData,
+)
+from app.services.schedule_snapshot_service import (
+    save_snapshot,
+    list_snapshots,
+    get_snapshot,
+    delete_snapshot,
+    update_snapshot,
+    DuplicateNameError,
+    SnapshotError,
 )
 
 
@@ -471,3 +481,370 @@ class TestScheduleRoutes:
         """Test getting a class that doesn't exist."""
         response = client.get('/schedule/classes/NONEXISTENT-999-99')
         assert response.status_code == 404
+
+
+# ============================================================================
+# Schedule Snapshot Tests
+# ============================================================================
+
+class TestScheduleSnapshotModel:
+    """Tests for the ScheduleSnapshot dataclass."""
+
+    def test_to_dict_returns_camel_case_keys(self):
+        """Test that to_dict() returns camelCase keys for API responses."""
+        snapshot = ScheduleSnapshot(
+            id="test-uuid-123",
+            user_id="user-uuid-456",
+            name="My Test Schedule",
+            class_ids=["CPSC-350-01", "MATH-210-02"],
+            total_credits=6.0,
+            class_count=2,
+            created_at="2024-01-15T10:30:00Z",
+            updated_at="2024-01-15T10:30:00Z",
+        )
+
+        result = snapshot.to_dict()
+
+        assert result["id"] == "test-uuid-123"
+        assert result["userId"] == "user-uuid-456"
+        assert result["name"] == "My Test Schedule"
+        assert result["classIds"] == ["CPSC-350-01", "MATH-210-02"]
+        assert result["totalCredits"] == 6.0
+        assert result["classCount"] == 2
+        assert result["createdAt"] == "2024-01-15T10:30:00Z"
+        assert result["updatedAt"] == "2024-01-15T10:30:00Z"
+
+    def test_from_db_row_parses_correctly(self):
+        """Test that from_db_row() correctly parses database rows."""
+        db_row = {
+            "id": "db-uuid-789",
+            "user_id": "user-uuid-abc",
+            "name": "Spring 2024",
+            "schedule_data": {
+                "class_ids": ["BIOL-101-01"],
+                "total_credits": 4.0,
+                "class_count": 1,
+            },
+            "created_at": "2024-02-01T08:00:00Z",
+            "updated_at": "2024-02-01T09:00:00Z",
+        }
+
+        snapshot = ScheduleSnapshot.from_db_row(db_row)
+
+        assert snapshot.id == "db-uuid-789"
+        assert snapshot.user_id == "user-uuid-abc"
+        assert snapshot.name == "Spring 2024"
+        assert snapshot.class_ids == ["BIOL-101-01"]
+        assert snapshot.total_credits == 4.0
+        assert snapshot.class_count == 1
+
+    def test_from_db_row_handles_string_json(self):
+        """Test that from_db_row() handles schedule_data as JSON string."""
+        import json
+        db_row = {
+            "id": "test-id",
+            "user_id": "test-user",
+            "name": "Test",
+            "schedule_data": json.dumps({
+                "class_ids": ["A", "B"],
+                "total_credits": 8.0,
+                "class_count": 2,
+            }),
+            "created_at": "",
+            "updated_at": "",
+        }
+
+        snapshot = ScheduleSnapshot.from_db_row(db_row)
+
+        assert snapshot.class_ids == ["A", "B"]
+        assert snapshot.total_credits == 8.0
+
+
+class TestScheduleSnapshotService:
+    """Tests for the schedule snapshot service functions."""
+
+    @patch('app.services.schedule_snapshot_service.supabase_request')
+    def test_save_snapshot_success(self, mock_request):
+        """Test saving a snapshot successfully."""
+        # Mock user lookup
+        mock_request.side_effect = [
+            MagicMock(status_code=200, json=lambda: [{"id": "user-123"}]),
+            MagicMock(status_code=201, json=lambda: [{
+                "id": "snap-456",
+                "user_id": "user-123",
+                "name": "Test Schedule",
+                "schedule_data": {
+                    "class_ids": ["CPSC-350-01"],
+                    "total_credits": 3.0,
+                    "class_count": 1,
+                },
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z",
+            }]),
+        ]
+
+        result = save_snapshot("test@example.com", "Test Schedule", ["CPSC-350-01"], 3.0)
+
+        assert result.id == "snap-456"
+        assert result.name == "Test Schedule"
+        assert result.class_ids == ["CPSC-350-01"]
+
+    @patch('app.services.schedule_snapshot_service.supabase_request')
+    def test_save_snapshot_duplicate_name_error(self, mock_request):
+        """Test that duplicate name raises DuplicateNameError."""
+        mock_request.side_effect = [
+            MagicMock(status_code=200, json=lambda: [{"id": "user-123"}]),
+            MagicMock(status_code=409, text="duplicate key"),
+        ]
+
+        with pytest.raises(DuplicateNameError):
+            save_snapshot("test@example.com", "Existing Name", [], 0)
+
+    @patch('app.services.schedule_snapshot_service.supabase_request')
+    def test_list_snapshots_returns_list(self, mock_request):
+        """Test listing snapshots returns a list of ScheduleSnapshot objects."""
+        mock_request.side_effect = [
+            MagicMock(status_code=200, json=lambda: [{"id": "user-123"}]),
+            MagicMock(status_code=200, json=lambda: [
+                {
+                    "id": "snap-1",
+                    "user_id": "user-123",
+                    "name": "Schedule A",
+                    "schedule_data": {"class_ids": [], "total_credits": 0, "class_count": 0},
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "updated_at": "2024-01-01T00:00:00Z",
+                },
+                {
+                    "id": "snap-2",
+                    "user_id": "user-123",
+                    "name": "Schedule B",
+                    "schedule_data": {"class_ids": ["X"], "total_credits": 3, "class_count": 1},
+                    "created_at": "2024-01-02T00:00:00Z",
+                    "updated_at": "2024-01-02T00:00:00Z",
+                },
+            ]),
+        ]
+
+        result = list_snapshots("test@example.com")
+
+        assert len(result) == 2
+        assert result[0].name == "Schedule A"
+        assert result[1].name == "Schedule B"
+
+    @patch('app.services.schedule_snapshot_service.supabase_request')
+    def test_delete_snapshot_success(self, mock_request):
+        """Test deleting a snapshot returns True on success."""
+        mock_request.side_effect = [
+            MagicMock(status_code=200, json=lambda: [{"id": "user-123"}]),
+            MagicMock(status_code=204),
+        ]
+
+        result = delete_snapshot("test@example.com", "snap-to-delete")
+
+        assert result is True
+
+
+class TestScheduleSnapshotRoutes:
+    """Tests for the schedule snapshot API endpoints."""
+
+    @pytest.fixture
+    def client(self):
+        """Create a test client for the Flask app."""
+        from app.main import app
+        app.config['TESTING'] = True
+        with app.test_client() as client:
+            yield client
+
+    def test_create_snapshot_requires_auth(self, client):
+        """Test that POST /schedule/snapshots requires authentication."""
+        response = client.post(
+            '/schedule/snapshots',
+            json={'name': 'Test', 'class_ids': [], 'total_credits': 0},
+            content_type='application/json'
+        )
+        assert response.status_code == 401
+
+    def test_list_snapshots_requires_auth(self, client):
+        """Test that GET /schedule/snapshots requires authentication."""
+        response = client.get('/schedule/snapshots')
+        assert response.status_code == 401
+
+    def test_get_snapshot_requires_auth(self, client):
+        """Test that GET /schedule/snapshots/<id> requires authentication."""
+        response = client.get('/schedule/snapshots/some-uuid')
+        assert response.status_code == 401
+
+    def test_delete_snapshot_requires_auth(self, client):
+        """Test that DELETE /schedule/snapshots/<id> requires authentication."""
+        response = client.delete('/schedule/snapshots/some-uuid')
+        assert response.status_code == 401
+
+    def test_update_snapshot_requires_auth(self, client):
+        """Test that PATCH /schedule/snapshots/<id> requires authentication."""
+        response = client.patch(
+            '/schedule/snapshots/some-uuid',
+            json={'name': 'New Name'},
+            content_type='application/json'
+        )
+        assert response.status_code == 401
+
+
+class TestEecsRequirementBadges:
+    """Tests for EECS-specific requirement badge matching."""
+
+    def test_ethics_core_badge(self):
+        """ENGR 501 should get Ethics Core badge."""
+        from app.services.degree_requirements_matcher import get_eecs_requirement_badge
+        
+        badge = get_eecs_requirement_badge("ENGR 501")
+        assert badge is not None
+        assert badge.label == "Ethics Core"
+        assert badge.short_label == "Ethics"
+        assert badge.type == RequirementType.MAJOR_CORE
+
+    def test_leadership_core_badge(self):
+        """ENGR 520 should get Leadership Core badge."""
+        from app.services.degree_requirements_matcher import get_eecs_requirement_badge
+        
+        badge = get_eecs_requirement_badge("ENGR 520")
+        assert badge is not None
+        assert badge.label == "Leadership Core"
+        assert badge.short_label == "Lead"
+        assert badge.type == RequirementType.MAJOR_CORE
+
+    def test_technical_core_ds_badge(self):
+        """CPSC 542 should get Technical Core - Data Science badge."""
+        from app.services.degree_requirements_matcher import get_eecs_requirement_badge
+        
+        badge = get_eecs_requirement_badge("CPSC 542")
+        assert badge is not None
+        assert badge.label == "Technical Core - Data Science & AI"
+        assert badge.short_label == "Tech-DS"
+        assert badge.type == RequirementType.MAJOR_ELECTIVE
+
+    def test_technical_core_cs_badge(self):
+        """CPSC 510 should get Technical Core - Computing Systems badge."""
+        from app.services.degree_requirements_matcher import get_eecs_requirement_badge
+        
+        badge = get_eecs_requirement_badge("CPSC 510")
+        assert badge is not None
+        assert badge.label == "Technical Core - Computing Systems"
+        assert badge.short_label == "Tech-CS"
+        assert badge.type == RequirementType.MAJOR_ELECTIVE
+
+    def test_technical_core_ee_badge(self):
+        """EENG 514 should get Technical Core - Electrical Systems badge."""
+        from app.services.degree_requirements_matcher import get_eecs_requirement_badge
+        
+        badge = get_eecs_requirement_badge("EENG 514")
+        assert badge is not None
+        assert badge.label == "Technical Core - Electrical Systems"
+        assert badge.short_label == "Tech-EE"
+        assert badge.type == RequirementType.MAJOR_ELECTIVE
+
+    def test_non_eecs_course_no_badge(self):
+        """CS 533 (Computational Science, not EECS) should NOT get a badge."""
+        from app.services.degree_requirements_matcher import get_eecs_requirement_badge
+        
+        badge = get_eecs_requirement_badge("CS 533")
+        assert badge is None
+
+    def test_non_eecs_course_cs_770_no_badge(self):
+        """CS 770 (Computational Science, not EECS) should NOT get a badge."""
+        from app.services.degree_requirements_matcher import get_eecs_requirement_badge
+        
+        badge = get_eecs_requirement_badge("CS 770")
+        assert badge is None
+
+    def test_enrich_classes_with_eecs_requirements(self):
+        """Test that EECS classes get enriched with badges."""
+        from app.services.degree_requirements_matcher import enrich_classes_with_eecs_requirements
+        from app.models.schedule_types import DaysOccurring, OccurrenceData
+        
+        # Create test class section
+        cls = ClassSection(
+            id="ENGR-501-01",
+            code="ENGR 501-01",
+            subject="ENGR",
+            number="501",
+            section="01",
+            title="Engineering Ethics",
+            credits=3.0,
+            display_days="MW",
+            display_time="10:00am - 10:50am",
+            location="HAR 101",
+            professor="Smith",
+            professor_rating=4.5,
+            semester="spring2026",
+            semesters_offered=["Spring"],
+            occurrence_data=OccurrenceData(
+                starts=600,  # 10:00am in minutes
+                ends=650,    # 10:50am in minutes
+                days_occurring=DaysOccurring(),
+            ),
+        )
+        
+        classes = [cls]
+        result = enrich_classes_with_eecs_requirements(classes, "M.S. Electrical Engineering and Computer Science")
+        
+        assert len(result) == 1
+        assert result[0].requirements_satisfied is not None
+        assert len(result[0].requirements_satisfied) == 1
+        assert result[0].requirements_satisfied[0]["label"] == "Ethics Core"
+
+    def test_enrich_non_eecs_program_no_badges(self):
+        """Test that non-EECS program doesn't get EECS badges."""
+        from app.services.degree_requirements_matcher import enrich_classes_with_eecs_requirements
+        from app.models.schedule_types import DaysOccurring, OccurrenceData
+        
+        cls = ClassSection(
+            id="ENGR-501-01",
+            code="ENGR 501-01",
+            subject="ENGR",
+            number="501",
+            section="01",
+            title="Engineering Ethics",
+            credits=3.0,
+            display_days="MW",
+            display_time="10:00am - 10:50am",
+            location="HAR 101",
+            professor="Smith",
+            professor_rating=4.5,
+            semester="spring2026",
+            semesters_offered=["Spring"],
+            occurrence_data=OccurrenceData(
+                starts=600,  # 10:00am in minutes
+                ends=650,    # 10:50am in minutes
+                days_occurring=DaysOccurring(),
+            ),
+        )
+        
+        classes = [cls]
+        result = enrich_classes_with_eecs_requirements(classes, "M.S. Computer Science")
+        
+        assert len(result) == 1
+        # Should not have EECS badges for non-EECS program
+        assert result[0].requirements_satisfied is None or len(result[0].requirements_satisfied) == 0
+
+    def test_get_eecs_degree_requirements(self):
+        """Test that EECS degree requirements are returned correctly."""
+        from app.services.degree_requirements_matcher import get_eecs_degree_requirements
+        
+        reqs = get_eecs_degree_requirements()
+        
+        # Should have all core areas
+        labels = [req.label for req in reqs]
+        assert "Ethics Core" in labels
+        assert "Leadership Core" in labels
+        assert "Technical Core - Computing Systems" in labels
+        assert "Technical Core - Data Science & AI" in labels
+        assert "Technical Core - Electrical Systems" in labels
+        assert "Mastery Demonstration" in labels
+        
+        # Check credits
+        ethics = next(r for r in reqs if r.label == "Ethics Core")
+        assert ethics.credits_needed == 3.0
+        assert ethics.type == RequirementType.MAJOR_CORE
+        
+        leadership = next(r for r in reqs if r.label == "Leadership Core")
+        assert leadership.credits_needed == 6.0

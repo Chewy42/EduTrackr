@@ -13,6 +13,11 @@ from app.models.schedule_types import (
     RequirementType,
     REQUIREMENT_COLORS,
 )
+from app.services.ms_eecs_requirements import (
+    is_eecs_program,
+    get_categorized_courses_for_eecs,
+    get_valid_course_codes as get_eecs_valid_courses,
+)
 
 
 # Common GE area mappings based on Chapman's curriculum
@@ -47,6 +52,131 @@ GE_AREA_MAPPINGS = {
         "courses": [],
     },
 }
+
+# M.S. EECS Requirement Category Mappings
+EECS_CATEGORY_LABELS = {
+    "ethics_core": ("Ethics Core", RequirementType.MAJOR_CORE),
+    "leadership_core": ("Leadership Core", RequirementType.MAJOR_CORE),
+    "computing_systems": ("Technical Core - Computing Systems", RequirementType.MAJOR_ELECTIVE),
+    "data_science_intelligent_systems": ("Technical Core - Data Science & AI", RequirementType.MAJOR_ELECTIVE),
+    "electrical_systems": ("Technical Core - Electrical Systems", RequirementType.MAJOR_ELECTIVE),
+    "mastery": ("Mastery Demonstration", RequirementType.MAJOR_CORE),
+}
+
+
+def get_eecs_requirement_badge(course_code: str) -> Optional[RequirementBadge]:
+    """
+    Get a requirement badge for an EECS curriculum course.
+    
+    Args:
+        course_code: Course code like "CPSC 542" or "ENGR 501"
+    
+    Returns:
+        RequirementBadge if the course is part of EECS curriculum, None otherwise
+    """
+    categorized = get_categorized_courses_for_eecs()
+    
+    for category_key, course_codes in categorized.items():
+        if course_code in course_codes:
+            label, req_type = EECS_CATEGORY_LABELS.get(category_key, ("EECS Elective", RequirementType.MAJOR_ELECTIVE))
+            
+            # Generate short label based on category
+            if "ethics" in category_key:
+                short_label = "Ethics"
+            elif "leadership" in category_key:
+                short_label = "Lead"
+            elif "computing" in category_key:
+                short_label = "Tech-CS"
+            elif "data_science" in category_key:
+                short_label = "Tech-DS"
+            elif "electrical" in category_key:
+                short_label = "Tech-EE"
+            elif "mastery" in category_key:
+                short_label = "Thesis"
+            else:
+                short_label = "EECS"
+            
+            return RequirementBadge(
+                type=req_type,
+                label=label,
+                short_label=short_label,
+                color=REQUIREMENT_COLORS.get(req_type, "gray"),
+            )
+    
+    return None
+
+
+def get_eecs_degree_requirements() -> List[DegreeRequirement]:
+    """
+    Get the M.S. EECS curriculum requirements as DegreeRequirement objects.
+    This allows the View Impact modal to properly show progress for EECS students.
+    
+    Returns:
+        List of DegreeRequirement objects for the EECS curriculum.
+    """
+    from app.services.ms_eecs_requirements import load_ms_eecs_requirements
+    
+    requirements = []
+    eecs_data = load_ms_eecs_requirements()
+    reqs = eecs_data.get("requirements", {})
+    
+    # Ethics Core - 3 credits
+    ethics = reqs.get("ethics_core", {})
+    if ethics:
+        requirements.append(DegreeRequirement(
+            type=RequirementType.MAJOR_CORE,
+            label="Ethics Core",
+            credits_needed=float(ethics.get("credits_required", 3)),
+        ))
+    
+    # Leadership Core - 6 credits
+    leadership = reqs.get("leadership_core", {})
+    if leadership:
+        requirements.append(DegreeRequirement(
+            type=RequirementType.MAJOR_CORE,
+            label="Leadership Core",
+            credits_needed=float(leadership.get("credits_required", 6)),
+        ))
+    
+    # Technical Core areas - 15 credits total, from any of the three areas
+    tech_core = reqs.get("technical_core", {})
+    if tech_core:
+        areas = tech_core.get("areas", {})
+        
+        # Computing Systems
+        if "computing_systems" in areas:
+            requirements.append(DegreeRequirement(
+                type=RequirementType.MAJOR_ELECTIVE,
+                label="Technical Core - Computing Systems",
+                credits_needed=float(areas["computing_systems"].get("credits_per_course", 3)),
+            ))
+        
+        # Data Science & Intelligent Systems
+        if "data_science_intelligent_systems" in areas:
+            requirements.append(DegreeRequirement(
+                type=RequirementType.MAJOR_ELECTIVE,
+                label="Technical Core - Data Science & AI",
+                credits_needed=float(areas["data_science_intelligent_systems"].get("credits_per_course", 3)),
+            ))
+        
+        # Electrical Systems
+        if "electrical_systems" in areas:
+            requirements.append(DegreeRequirement(
+                type=RequirementType.MAJOR_ELECTIVE,
+                label="Technical Core - Electrical Systems",
+                credits_needed=float(areas["electrical_systems"].get("credits_per_course", 3)),
+            ))
+    
+    # Mastery Demonstration - 6 credits
+    mastery = reqs.get("mastery_demonstration", {})
+    if mastery:
+        requirements.append(DegreeRequirement(
+            type=RequirementType.MAJOR_CORE,
+            label="Mastery Demonstration",
+            credits_needed=float(mastery.get("credits_required", 6)),
+        ))
+    
+    return requirements
 
 
 def _normalize_course_code(code: str) -> Tuple[str, str]:
@@ -430,6 +560,43 @@ def enrich_classes_with_requirements(
     for cls in classes:
         badges = match_class_to_requirements(cls, requirements)
         cls.requirements_satisfied = [badge.to_dict() for badge in badges]
+    
+    return classes
+
+
+def enrich_classes_with_eecs_requirements(
+    classes: List[ClassSection],
+    program_name: Optional[str] = None,
+) -> List[ClassSection]:
+    """
+    Enrich a list of classes with EECS-specific requirement badges.
+    This should be called for M.S. EECS students to show how courses
+    map to curriculum areas like Ethics Core, Leadership Core, Technical Core.
+    
+    Args:
+        classes: List of classes to enrich
+        program_name: The program name (to verify EECS)
+    
+    Returns:
+        List of classes with requirements_satisfied field populated
+    """
+    # Only apply EECS badges for EECS program
+    if program_name and not is_eecs_program(program_name):
+        return classes
+    
+    for cls in classes:
+        course_code = f"{cls.subject} {cls.number}"
+        badge = get_eecs_requirement_badge(course_code)
+        
+        if badge:
+            # Add to existing badges or create new list
+            if cls.requirements_satisfied:
+                # Check if badge already exists
+                existing_labels = {b.get("label") for b in cls.requirements_satisfied}
+                if badge.label not in existing_labels:
+                    cls.requirements_satisfied.append(badge.to_dict())
+            else:
+                cls.requirements_satisfied = [badge.to_dict()]
     
     return classes
 

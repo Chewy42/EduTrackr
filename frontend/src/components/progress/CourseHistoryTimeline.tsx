@@ -122,8 +122,8 @@ export default function CourseHistoryTimeline({ courses }: CourseHistoryTimeline
       {/* Term selector */}
       <div className="flex items-center justify-between mb-4 bg-slate-50 rounded-xl p-2">
         <button
-          onClick={() => setSelectedTermIndex((prev) => Math.min(prev + 1, termGroups.length - 1))}
-          disabled={selectedTermIndex >= termGroups.length - 1}
+          onClick={() => setSelectedTermIndex((prev) => Math.max(prev - 1, 0))}
+          disabled={selectedTermIndex <= 0}
           className="p-1.5 rounded-lg hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
           <FiChevronLeft className="text-slate-600" />
@@ -137,8 +137,8 @@ export default function CourseHistoryTimeline({ courses }: CourseHistoryTimeline
         </div>
 
         <button
-          onClick={() => setSelectedTermIndex((prev) => Math.max(prev - 1, 0))}
-          disabled={selectedTermIndex <= 0}
+          onClick={() => setSelectedTermIndex((prev) => Math.min(prev + 1, termGroups.length - 1))}
+          disabled={selectedTermIndex >= termGroups.length - 1}
           className="p-1.5 rounded-lg hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
           <FiChevronRight className="text-slate-600" />

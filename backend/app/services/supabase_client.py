@@ -3,10 +3,16 @@ from typing import Any, Dict
 
 import requests
 
-SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+
+def _get_env(key: str, default: str = "") -> str:
+    """Get environment variable, stripping whitespace."""
+    return (os.getenv(key) or default).strip()
+
+
+SUPABASE_URL = _get_env("SUPABASE_URL").rstrip("/")
+SUPABASE_ANON_KEY = _get_env("SUPABASE_ANON_KEY")
 # Prefer SERVICE_ROLE_KEY for backend admin access, fallback to ACCESS_TOKEN
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ACCESS_TOKEN")
+SUPABASE_SERVICE_KEY = _get_env("SUPABASE_SERVICE_ROLE_KEY") or _get_env("SUPABASE_ACCESS_TOKEN")
 
 
 def supabase_configured() -> bool:
