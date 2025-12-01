@@ -2,7 +2,6 @@ import React, { ReactNode, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   FiHome,
-  FiBarChart,
   FiCalendar,
   FiSearch,
   FiSettings,
@@ -20,11 +19,6 @@ const navItems: NavItem[] = [
     label: "Home",
     to: "/",
     icon: <FiHome className="text-xl" />,
-  },
-  {
-    label: "My Progress",
-    to: "/progress-page",
-    icon: <FiBarChart className="text-xl" />,
   },
   {
     label: "Generate Schedule",

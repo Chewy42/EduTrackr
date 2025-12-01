@@ -1,243 +1,106 @@
-import React, { useEffect, useRef, useState } from "react";
-import { 
-  FiSend, 
-  FiCheckCircle, 
-  FiCpu, 
-  FiUploadCloud, 
+import React, { useState } from "react";
+import {
+  FiCheckCircle,
+  FiCpu,
+  FiUploadCloud,
   FiRefreshCw,
-  FiAlertCircle,
-  FiChevronDown
+  FiArrowRight
 } from "react-icons/fi";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { useAuth } from "../auth/AuthContext";
 
-type Message = {
-  role: "user" | "assistant";
-  content: string;
-  timestamp?: Date;
+// Static onboarding questions with button options
+type OnboardingQuestion = {
+  id: string;
+  question: string;
+  options: { label: string; value: string }[];
 };
 
-type OnboardingMode =
-  | "undecided"
-  | "upcoming_semester"
-  | "four_year_plan"
-  | "view_progress";
+const ONBOARDING_QUESTIONS: OnboardingQuestion[] = [
+  {
+    id: "planning_mode",
+    question: "What would you like to focus on today?",
+    options: [
+      { label: "📅 Plan my next semester", value: "upcoming_semester" },
+      { label: "🎓 Create a 4-year plan", value: "four_year_plan" },
+      { label: "📊 View my progress", value: "view_progress" },
+    ],
+  },
+  {
+    id: "credit_load",
+    question: "How many credits do you typically take per semester?",
+    options: [
+      { label: "Light (9-12 credits)", value: "light" },
+      { label: "Standard (12-15 credits)", value: "standard" },
+      { label: "Heavy (15-18 credits)", value: "heavy" },
+    ],
+  },
+  {
+    id: "schedule_preference",
+    question: "When do you prefer to take classes?",
+    options: [
+      { label: "🌅 Mornings", value: "mornings" },
+      { label: "☀️ Afternoons", value: "afternoons" },
+      { label: "🔄 Flexible / No preference", value: "flexible" },
+    ],
+  },
+  {
+    id: "work_status",
+    question: "Do you have any work commitments?",
+    options: [
+      { label: "💼 Part-time job", value: "part_time" },
+      { label: "🏢 Full-time job", value: "full_time" },
+      { label: "📚 No work - focusing on studies", value: "none" },
+    ],
+  },
+  {
+    id: "priority",
+    question: "What's your main priority right now?",
+    options: [
+      { label: "🎯 Complete major requirements", value: "major" },
+      { label: "🌟 Explore electives & interests", value: "electives" },
+      { label: "🏁 Graduate on time", value: "graduate" },
+    ],
+  },
+];
 
-type OnboardingStep = "welcome" | "analyzing" | "conversation" | "ready";
-
-// Smart quick replies based on last assistant question, aligned with backend parsing
-const getContextualQuickReplies = (messages: Message[], mode: OnboardingMode): string[] => {
-  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-  const lastText = lastAssistant?.content?.toLowerCase() || "";
-
-  // Planning mode question
-  if (
-    mode === "undecided" ||
-    lastText.includes("what would you like to focus on")
-  ) {
-    return [
-      "Next semester",
-      "Full 4-year plan",
-      "View my progress"
-    ];
-  }
-
-  // Credit load question
-  if (lastText.includes("credit load") || lastText.includes("credits")) {
-    return [
-      "Light (9-12)",
-      "Standard (12-15)",
-      "Heavy (15-18)"
-    ];
-  }
-
-  // Time / schedule question
-  if (lastText.includes("schedule") || lastText.includes("time") || lastText.includes("mornings") || lastText.includes("afternoons")) {
-    return [
-      "Mornings",
-      "Afternoons",
-      "Flexible"
-    ];
-  }
-
-  // Work status question
-  if (lastText.includes("work commitments") || lastText.includes("work")) {
-    return [
-      "I work part-time",
-      "Full-time job",
-      "No work commitments"
-    ];
-  }
-
-  // Summer availability question
-  if (lastText.includes("summer") && lastText.includes("classes")) {
-    return [
-      "Yes to summer",
-      "No summer classes",
-      "Maybe one course"
-    ];
-  }
-
-  // Focus / priority question
-  if (lastText.includes("priority") || lastText.includes("focus")) {
-    return [
-      "Major requirements",
-      "Electives/interests",
-      "Graduate on time"
-    ];
-  }
-
-  // Completion / general advisor mode
-  if (lastText.includes("all set") || lastText.includes("go to dashboard")) {
-    return [
-      "Plan my next semester",
-      "Show my degree progress",
-      "What courses do I need?"
-    ];
-  }
-
-  // Default fallback
-  return [
-    "Plan my next semester",
-    "Show my degree progress",
-    "What courses do I need?"
-  ];
-};
+type OnboardingAnswers = Record<string, string>;
 
 export default function OnboardingChat() {
-  const { jwt, mergePreferences, preferences } = useAuth();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [input, setInput] = useState("");
+  const { jwt, mergePreferences } = useAuth();
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [answers, setAnswers] = useState<OnboardingAnswers>({});
   const [loading, setLoading] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [mode, setMode] = useState<OnboardingMode>("undecided");
-  const [step, setStep] = useState<OnboardingStep>("welcome");
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const initialized = useRef(false);
-  const [streamingContent, setStreamingContent] = useState<string>("");
+  const [isComplete, setIsComplete] = useState(false);
 
-  const scrollToBottom = (smooth = true) => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: smooth ? "smooth" : "auto"
-      });
+  const currentQuestion = ONBOARDING_QUESTIONS[currentQuestionIndex];
+  const progressPercent = Math.round(((currentQuestionIndex) / ONBOARDING_QUESTIONS.length) * 100);
+
+  const handleOptionClick = (questionId: string, value: string) => {
+    // Save the answer
+    setAnswers((prev) => ({ ...prev, [questionId]: value }));
+
+    // Move to next question or complete
+    if (currentQuestionIndex < ONBOARDING_QUESTIONS.length - 1) {
+      setCurrentQuestionIndex((prev) => prev + 1);
+    } else {
+      // All questions answered - complete onboarding
+      handleFinish({ ...answers, [questionId]: value });
     }
   };
 
-  const handleScroll = () => {
-    if (scrollRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-      setShowScrollButton(scrollHeight - scrollTop - clientHeight > 100);
+  const handleBack = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex((prev) => prev - 1);
     }
   };
 
-  useEffect(() => {
-    // Initial load - only run once per tab
-    const initChat = async () => {
-      if (!jwt || initialized.current) return;
-      initialized.current = true;
-
-      setStep("analyzing");
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const res = await fetch("/api/chat/onboarding", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${jwt}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ mode }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setSessionId(data.session_id);
-          // Always take messages from server response to avoid local duplicates
-          setMessages((data.messages || []).map((m: Message) => ({ ...m, timestamp: new Date() })));
-          if (data.suggestions) {
-            setSuggestions(data.suggestions);
-          }
-          setStep("conversation");
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          setError(errData.error || "Failed to initialize chat. Please try again.");
-          setStep("welcome");
-        }
-      } catch (err) {
-        console.error("Chat init failed", err);
-        setError("Connection failed. Please check your internet and try again.");
-        setStep("welcome");
-        initialized.current = false;
-      } finally {
-        setLoading(false);
-      }
-    };
-    initChat();
-  }, [jwt]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // Scroll when streaming content updates
-  useEffect(() => {
-    if (streamingContent) {
-      scrollToBottom(false); // Don't use smooth scroll for streaming
-    }
-  }, [streamingContent]);
-
-  // Focus input after loading completes
-  useEffect(() => {
-    if (!loading && inputRef.current && step === "conversation") {
-      inputRef.current.focus();
-    }
-  }, [loading, step]);
-
-  const handleReset = async () => {
-    if (!jwt || loading) return;
-    if (!window.confirm("Start fresh? This will clear your current conversation.")) {
+  const handleReset = () => {
+    if (!window.confirm("Start over? This will reset your answers.")) {
       return;
     }
-    
-    setLoading(true);
-    setMessages([]);
-    setSuggestions([]);
-    setMode("undecided");
-    setError(null);
-    setStep("analyzing");
-    
-    try {
-      const res = await fetch("/api/chat/onboarding", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${jwt}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ reset: true, mode: "undecided" }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSessionId(data.session_id);
-        // Replace local history with server-provided messages to avoid duplicates
-        setMessages((data.messages || []).map((m: Message) => ({ ...m, timestamp: new Date() })));
-        if (data.suggestions) {
-          setSuggestions(data.suggestions);
-        }
-        setStep("conversation");
-      }
-    } catch (err) {
-      console.error("Chat reset failed", err);
-      setError("Failed to reset chat. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    setCurrentQuestionIndex(0);
+    setAnswers({});
+    setIsComplete(false);
   };
 
   const handleReupload = async () => {
@@ -255,9 +118,6 @@ export default function OnboardingChat() {
         },
       });
       if (res.ok) {
-        // Clear local chat state and force preferences to reflect no evaluation
-        setMessages([]);
-        setSuggestions([]);
         mergePreferences({ hasProgramEvaluation: false });
         window.location.reload();
       } else {
@@ -270,419 +130,177 @@ export default function OnboardingChat() {
     }
   };
 
-  const handleSend = async (e?: React.FormEvent, msgOverride?: string) => {
-    e?.preventDefault();
-    const textToSend = msgOverride || input;
-    
-    if (!textToSend.trim() || !jwt || loading) return;
-
-    const userMsg = textToSend.trim();
-    const lower = userMsg.toLowerCase();
-    setError(null);
-
-    // Intercept "Go to Dashboard" command to make it functional
-    if (lower === "go to dashboard" || lower === "done") {
-      handleFinish();
-      return;
-    }
-
-    let nextMode: OnboardingMode = mode;
-    if (mode === "undecided") {
-      if (
-        lower.includes("upcoming") ||
-        lower.includes("next semester") ||
-        lower.includes("next term")
-      ) {
-        nextMode = "upcoming_semester";
-      } else if (
-        lower.includes("4-year") ||
-        lower.includes("four year") ||
-        lower.includes("four-year") ||
-        lower.includes("4 year")
-      ) {
-        nextMode = "four_year_plan";
-      } else if (lower.includes("progress")) {
-        nextMode = "view_progress";
-      }
-      if (nextMode !== mode) {
-        setMode(nextMode);
-      }
-    }
-
-    setInput("");
-    setSuggestions([]);
-    setMessages((prev) => [...prev, { role: "user", content: userMsg, timestamp: new Date() }]);
-    setLoading(true);
-    setStreamingContent("");
-
-    try {
-      const res = await fetch("/api/chat/onboarding/stream", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${jwt}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message: userMsg, mode: nextMode }),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        setError(errData.error || "Failed to send message. Please try again.");
-        setLoading(false);
-        return;
-      }
-
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      let accumulatedContent = "";
-
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") {
-              // Finalize the message - filter out [SUGGESTIONS marker
-              if (accumulatedContent) {
-                const parts = accumulatedContent.split(/\[SUGGESTIONS/i);
-                const cleanContent = (parts[0] || accumulatedContent).trim();
-                setMessages((prev) => [
-                  ...prev,
-                  { role: "assistant", content: cleanContent, timestamp: new Date() }
-                ]);
-                setStreamingContent("");
-              }
-              continue;
-            }
-
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.type === "chunk") {
-                accumulatedContent += parsed.content;
-                // Filter out [SUGGESTIONS text from display
-                const parts = accumulatedContent.split(/\[SUGGESTIONS/i);
-                const displayContent = (parts[0] || accumulatedContent).trim();
-                setStreamingContent(displayContent);
-              } else if (parsed.type === "suggestions") {
-                setSuggestions(parsed.content || []);
-              } else if (parsed.error) {
-                setError(parsed.error);
-              }
-            } catch {
-              // Ignore parse errors for incomplete chunks
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Chat send failed", err);
-      setError("Connection failed. Please check your internet and try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleFinish = async () => {
+  const handleFinish = async (finalAnswers: OnboardingAnswers) => {
     if (!jwt || loading) return;
-    setStep("ready");
+    setLoading(true);
+    setIsComplete(true);
+
     try {
+      // Save onboarding preferences to backend
       await fetch("/api/auth/preferences", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${jwt}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ onboardingComplete: true }),
+        body: JSON.stringify({
+          onboardingComplete: true,
+          onboardingAnswers: finalAnswers
+        }),
       });
       mergePreferences({ onboardingComplete: true });
     } catch (err) {
       console.error("Finish failed", err);
-      setStep("conversation");
-      setError("Failed to complete onboarding. Please try again.");
+      setIsComplete(false);
+      setLoading(false);
     }
   };
 
-  // Progress indicator based on conversation length
-  const conversationProgress = Math.min(100, Math.max(10, messages.length * 15));
-
-  // Always show 3 quick reply buttons - use API suggestions or contextual defaults
-  const contextualReplies = getContextualQuickReplies(messages, mode);
-  const quickReplies = suggestions.length >= 3 
-    ? suggestions.slice(0, 3) 
-    : suggestions.length > 0 
-      ? [...suggestions, ...contextualReplies.slice(0, 3 - suggestions.length)]
-      : contextualReplies;
+  // Completion screen - redirect happens via preferences change
+  if (isComplete) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-slate-100 p-4 md:p-8">
+        <div className="flex flex-col items-center justify-center w-full max-w-lg p-8 bg-white rounded-2xl shadow-xl">
+          <div className="h-20 w-20 rounded-2xl bg-green-600 flex items-center justify-center shadow-lg">
+            <FiCheckCircle className="text-4xl text-white" />
+          </div>
+          <h2 className="mt-6 text-2xl font-bold text-slate-800">You're All Set!</h2>
+          <p className="mt-3 text-lg text-slate-500 text-center">
+            Taking you to your personalized dashboard...
+          </p>
+          <div className="mt-6 flex gap-2">
+            <div className="h-2 w-2 bg-green-600 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+            <div className="h-2 w-2 bg-green-600 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+            <div className="h-2 w-2 bg-green-600 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-slate-100 p-4 md:p-8">
-      <div className="flex flex-col h-[92vh] md:h-[88vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-xl">
-        
+      <div className="flex flex-col w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl">
+
         {/* Header */}
-        <div className="border-b border-slate-200 bg-white px-5 md:px-8 py-5">
+        <div className="border-b border-slate-200 bg-white px-6 md:px-8 py-6">
           <div className="flex items-center justify-between gap-4">
             {/* Left: Logo & Title */}
             <div className="flex items-center gap-4 min-w-0">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md">
                 <FiCpu className="text-2xl" />
               </div>
               <div className="min-w-0">
                 <h1 className="text-xl md:text-2xl font-bold text-slate-800">
-                  Academic Advisor
+                  Quick Setup
                 </h1>
                 <p className="text-sm md:text-base text-slate-500 mt-0.5">
-                  Let's plan your path to graduation
+                  Answer a few questions to personalize your experience
                 </p>
               </div>
             </div>
 
             {/* Right: Action Buttons */}
-            <div className="flex items-center gap-3 shrink-0">
-              <div className="hidden md:flex items-center gap-2">
-                <button
-                  onClick={handleReset}
-                  disabled={loading || step === "analyzing"}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <FiRefreshCw className={`text-lg ${loading ? "animate-spin" : ""}`} />
-                  Start Over
-                </button>
-                <button
-                  onClick={handleReupload}
-                  disabled={loading}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <FiUploadCloud className="text-lg" />
-                  New Program Evaluation
-                </button>
-              </div>
-              {!preferences.onboardingComplete && (
-                <button
-                  onClick={handleFinish}
-                  disabled={loading || messages.length < 1}
-                  className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-base font-semibold text-white shadow-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <FiCheckCircle className="text-xl" />
-                  <span className="hidden sm:inline">Go to Dashboard</span>
-                  <span className="sm:hidden">Done</span>
-                </button>
-              )}
+            <div className="hidden md:flex items-center gap-2">
+              <button
+                onClick={handleReset}
+                disabled={loading || currentQuestionIndex === 0}
+                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <FiRefreshCw className={`text-lg ${loading ? "animate-spin" : ""}`} />
+                Start Over
+              </button>
+              <button
+                onClick={handleReupload}
+                disabled={loading}
+                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <FiUploadCloud className="text-lg" />
+                New Evaluation
+              </button>
             </div>
           </div>
 
           {/* Progress Bar */}
-          <div className="mt-4 h-2 w-full bg-slate-200 rounded-full overflow-hidden">
-            <div 
+          <div className="mt-5 h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+            <div
               className="h-full bg-blue-600 rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${conversationProgress}%` }}
+              style={{ width: `${progressPercent}%` }}
             />
           </div>
+          <p className="mt-2 text-sm text-slate-500">
+            Question {currentQuestionIndex + 1} of {ONBOARDING_QUESTIONS.length}
+          </p>
         </div>
 
-        {/* Messages Area */}
-        <div 
-          ref={scrollRef} 
-          onScroll={handleScroll}
-          className="flex-1 overflow-y-auto bg-slate-50 p-5 md:p-8 space-y-5 relative"
-        >
-          {/* Analyzing State */}
-          {step === "analyzing" && (
-            <div className="flex flex-col items-center justify-center h-full py-16">
-              <div className="h-20 w-20 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg">
-                <FiCpu className="text-4xl text-white animate-pulse" />
-              </div>
-              <h3 className="mt-8 text-2xl font-bold text-slate-800">Reading Your Transcript</h3>
-              <p className="mt-3 text-lg text-slate-500 text-center max-w-md">
-                We're analyzing your courses and progress to give you personalized recommendations...
-              </p>
-              <div className="mt-8 flex gap-3">
-                <div className="h-3 w-3 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <div className="h-3 w-3 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <div className="h-3 w-3 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-              </div>
-            </div>
-          )}
-
-          {/* Error State */}
-          {error && (
-            <div className="flex items-center gap-4 p-5 bg-red-50 border border-red-200 rounded-xl text-base">
-              <FiAlertCircle className="text-red-500 text-xl shrink-0" />
-              <p className="text-red-700 font-medium">{error}</p>
-              <button 
-                onClick={() => setError(null)}
-                className="ml-auto text-red-400 hover:text-red-600 text-2xl font-light transition-colors"
-              >
-                ×
-              </button>
-            </div>
-          )}
-
-          {/* Messages */}
-          {step === "conversation" && messages.map((msg, i) => {
-            const isAi = msg.role === "assistant";
-            
-            return (
-              <div 
-                key={i} 
-                className={`flex ${isAi ? "justify-start" : "justify-end"}`}
-              >
-                {isAi && (
-                  <div className="shrink-0 mr-4 mt-1">
-                    <div className="h-10 w-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-md">
-                      <FiCpu className="text-white text-lg" />
-                    </div>
+        {/* Question Area */}
+        <div className="flex-1 bg-slate-50 p-6 md:p-8">
+          {currentQuestion && (
+            <div className="space-y-6">
+              {/* Question */}
+              <div className="flex items-start gap-4">
+                <div className="shrink-0">
+                  <div className="h-12 w-12 rounded-xl bg-blue-600 flex items-center justify-center shadow-md">
+                    <FiCpu className="text-white text-xl" />
                   </div>
-                )}
-                <div
-                  className={[
-                    "max-w-[85%] md:max-w-[75%] rounded-2xl px-5 md:px-6 py-4 text-base md:text-lg leading-relaxed",
-                    isAi
-                      ? "bg-white text-slate-700 shadow-sm border border-slate-200"
-                      : "bg-blue-600 text-white shadow-md",
-                  ].join(" ")}
-                >
-                  {isAi ? (
-                    <div className="prose prose-lg prose-slate max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                      <ReactMarkdown 
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          strong: ({ children }) => <strong className="text-blue-600 font-bold">{children}</strong>,
-                          ul: ({ children }) => <ul className="my-3 space-y-2">{children}</ul>,
-                          li: ({ children }) => <li className="flex items-start gap-3"><span className="text-blue-600 mt-1 text-xl">•</span><span>{children}</span></li>,
-                          p: ({ children }) => <p className="my-2">{children}</p>,
-                        }}
-                      >
-                        {msg.content}
-                      </ReactMarkdown>
-                    </div>
-                  ) : (
-                    <div className="whitespace-pre-wrap">{msg.content}</div>
-                  )}
+                </div>
+                <div className="flex-1 bg-white rounded-2xl px-6 py-5 shadow-sm border border-slate-200">
+                  <h2 className="text-xl md:text-2xl font-semibold text-slate-800">
+                    {currentQuestion.question}
+                  </h2>
                 </div>
               </div>
-            );
-          })}
 
-          {/* Streaming Message */}
-          {streamingContent && step === "conversation" && (
-            <div className="flex justify-start">
-              <div className="shrink-0 mr-4 mt-1">
-                <div className="h-10 w-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-md">
-                  <FiCpu className="text-white text-lg" />
-                </div>
-              </div>
-              <div className="max-w-[85%] md:max-w-[75%] rounded-2xl px-5 md:px-6 py-4 text-base md:text-lg leading-relaxed bg-white text-slate-700 shadow-sm border border-slate-200">
-                <div className="prose prose-lg prose-slate max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                  <ReactMarkdown 
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      strong: ({ children }) => <strong className="text-blue-600 font-bold">{children}</strong>,
-                      ul: ({ children }) => <ul className="my-3 space-y-2">{children}</ul>,
-                      li: ({ children }) => <li className="flex items-start gap-3"><span className="text-blue-600 mt-1 text-xl">•</span><span>{children}</span></li>,
-                      p: ({ children }) => <p className="my-2">{children}</p>,
-                    }}
+              {/* Options as Buttons */}
+              <div className="space-y-3 pl-16">
+                {currentQuestion.options.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => handleOptionClick(currentQuestion.id, option.value)}
+                    disabled={loading}
+                    className="w-full flex items-center justify-between gap-4 px-6 py-4 rounded-xl bg-white text-slate-700 text-lg font-medium hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition-all border-2 border-slate-200 text-left disabled:opacity-50 disabled:cursor-not-allowed group"
                   >
-                    {streamingContent}
-                  </ReactMarkdown>
-                </div>
-                <span className="inline-block w-2 h-5 bg-blue-600 animate-pulse ml-1" />
+                    <span>{option.label}</span>
+                    <FiArrowRight className="text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                  </button>
+                ))}
               </div>
-            </div>
-          )}
 
-          {/* Typing Indicator - only show when loading but not streaming yet */}
-          {loading && !streamingContent && messages.length > 0 && step === "conversation" && (
-            <div className="flex justify-start">
-              <div className="flex items-center gap-4">
-                <div className="h-10 w-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-md">
-                  <FiCpu className="text-white text-lg animate-pulse" />
+              {/* Back Button */}
+              {currentQuestionIndex > 0 && (
+                <div className="pl-16 pt-4">
+                  <button
+                    onClick={handleBack}
+                    disabled={loading}
+                    className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50"
+                  >
+                    ← Go back
+                  </button>
                 </div>
-                <div className="bg-white px-5 py-4 rounded-2xl shadow-sm border border-slate-200">
-                  <div className="flex gap-2">
-                    <div className="h-3 w-3 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <div className="h-3 w-3 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <div className="h-3 w-3 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
-          )}
-
-          {/* Scroll to bottom button */}
-          {showScrollButton && (
-            <button
-              onClick={() => scrollToBottom()}
-              className="fixed bottom-44 right-8 h-12 w-12 bg-white rounded-full shadow-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:text-blue-600 hover:border-blue-300 transition-all"
-            >
-              <FiChevronDown className="text-xl" />
-            </button>
           )}
         </div>
 
-        {/* Input Area */}
-        <div className="border-t border-slate-200 bg-white p-5 md:p-6 space-y-4">
-          {/* Quick Reply Buttons - Always show 3 */}
-          {!loading && step === "conversation" && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {quickReplies.map((reply, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleSend(undefined, reply)}
-                  className="px-4 py-3.5 rounded-xl bg-slate-100 text-slate-700 text-sm md:text-base font-medium hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-all border border-slate-200 text-left"
-                >
-                  {reply}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Input Form */}
-          <form onSubmit={(e) => handleSend(e)} className="relative">
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={step === "analyzing" ? "Please wait..." : "Type your question or request..."}
-              className="w-full rounded-xl border-2 border-slate-200 bg-white pl-5 pr-16 py-4 text-base md:text-lg placeholder:text-slate-400 focus:border-blue-500 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={loading || step === "analyzing"}
-            />
-            <button
-              type="submit"
-              disabled={loading || !input.trim() || step === "analyzing"}
-              className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-white shadow-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <FiSend className="text-lg" />
-            </button>
-          </form>
-
-          {/* Mobile action buttons */}
-          <div className="flex md:hidden items-center justify-center gap-6 pt-3 border-t border-slate-200">
-            <button
-              onClick={handleReset}
-              disabled={loading || step === "analyzing"}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-500 hover:text-red-600 transition-colors disabled:opacity-50"
-            >
-              <FiRefreshCw className={`text-lg ${loading ? "animate-spin" : ""}`} />
-              Start Over
-            </button>
-            <div className="h-5 w-px bg-slate-300" />
-            <button
-              onClick={handleReupload}
-              disabled={loading}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-500 hover:text-blue-600 transition-colors disabled:opacity-50"
-            >
-              <FiUploadCloud className="text-lg" />
-              New Transcript
-            </button>
-          </div>
+        {/* Mobile Action Buttons */}
+        <div className="flex md:hidden items-center justify-center gap-6 p-4 border-t border-slate-200 bg-white">
+          <button
+            onClick={handleReset}
+            disabled={loading || currentQuestionIndex === 0}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-500 hover:text-red-600 transition-colors disabled:opacity-50"
+          >
+            <FiRefreshCw className={`text-lg ${loading ? "animate-spin" : ""}`} />
+            Start Over
+          </button>
+          <div className="h-5 w-px bg-slate-300" />
+          <button
+            onClick={handleReupload}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-500 hover:text-blue-600 transition-colors disabled:opacity-50"
+          >
+            <FiUploadCloud className="text-lg" />
+            New Evaluation
+          </button>
         </div>
       </div>
     </div>

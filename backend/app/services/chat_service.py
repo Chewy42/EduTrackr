@@ -19,6 +19,34 @@ MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 _CATALOG_CACHE: Optional[List[Dict[str, Any]]] = None
 
+
+def _extract_first_name(full_name: str) -> str:
+    """
+    Extract the first name from various name formats.
+    Handles: "Last, First", "Last,First", "First Last", or just "First"
+    """
+    if not full_name:
+        return ""
+    
+    full_name = full_name.strip()
+    
+    # Handle "Last, First" or "Last,First" format (common in academic records)
+    if "," in full_name:
+        parts = full_name.split(",")
+        if len(parts) >= 2:
+            # Take the part after the comma (first name)
+            first_name = parts[1].strip()
+            # Remove any trailing ID like " - 2390407" (note: space-hyphen-space pattern)
+            if " - " in first_name:
+                first_name = first_name.split(" - ")[0].strip()
+            # If first name has multiple parts, take just the first word (first name, not middle)
+            return first_name.split()[0] if first_name else ""
+    
+    # Handle "First Last" format - take the first word
+    parts = full_name.split()
+    return parts[0] if parts else ""
+
+
 def create_onboarding_session(user_id: str, email: str) -> str:
     """Always create a fresh onboarding session for a user."""
     # We can link the latest evaluation_id if we want, but for now user_id is enough
@@ -657,48 +685,71 @@ def generate_reply(
     context: str = "onboarding"
 ) -> Dict[str, Any]:
     """Generate a reply plus up to 3 suggested follow‑up messages.
-
-    The LLM is instructed to respond in a simple XML envelope that we
-    parse server‑side, so the user never sees any internal reasoning.
+    
+    For onboarding: Uses deterministic responses for reliable flow.
+    For explore: Uses LLM for open-ended conversation.
     """
 
     # 1. Get PDF Context (student-specific)
     parsed_data = load_parsed_data(email)
-    context_str = ""
     parsed_fields: Dict[str, Any] = {}
     if parsed_data and "parsed_data" in parsed_data:
         parsed_fields = parsed_data["parsed_data"] or {}
-        context_str = json.dumps(parsed_fields, indent=2)
-        print(f"DEBUG: Chat Context Loaded ({len(context_str)} chars)", flush=True)
-    else:
-        print("DEBUG: Chat Context is EMPTY", flush=True)
 
-    # 1b. Attach official catalog program requirements, if we can match them.
+    # Extract student first name
+    student_info = parsed_fields.get("student_info", {})
+    student_name = _extract_first_name(student_info.get("name", ""))
+    name_greeting = student_name or "there"
+
+    # Get current preferences and parse user's response
+    current_prefs = get_scheduling_preferences(user_id)
+    if user_message and context == "onboarding":
+        current_prefs, field_saved = parse_and_save_user_response(user_id, user_message, current_prefs)
+
+    # Check status
+    is_complete, missing_fields = check_onboarding_completeness(current_prefs)
+    next_topic = get_next_question_topic(current_prefs)
+    collected_summary = get_collected_summary(current_prefs)
+
+    # Save user message to history
+    if user_message:
+        save_message(session_id, "user", user_message)
+
+    # ========== ONBOARDING: Use deterministic responses ==========
+    if context == "onboarding":
+        reply_text, suggestions = _get_onboarding_response(
+            next_topic, is_complete, name_greeting, collected_summary
+        )
+        
+        # Guard against race conditions for initial greeting
+        if not user_message:
+            current_history = get_chat_history(session_id)
+            has_assistant_msg = any(m.get("role") == "assistant" for m in current_history)
+            if not has_assistant_msg:
+                save_message(session_id, "assistant", reply_text)
+            else:
+                # Return existing message
+                for m in current_history:
+                    if m.get("role") == "assistant":
+                        reply_text = m.get("content", reply_text)
+                        break
+        else:
+            save_message(session_id, "assistant", reply_text)
+        
+        return {"reply": reply_text, "suggestions": suggestions}
+
+    # ========== EXPLORE: Use LLM for open-ended conversation ==========
     catalog_context = _build_catalog_context(parsed_fields) if parsed_fields else None
     catalog_str = json.dumps(catalog_context, indent=2) if catalog_context else "null"
-
-    # 1c. Compute requirement status from transcript + catalog requirements.
     degree_status = _compute_degree_status(parsed_fields, catalog_context)
     degree_status_str = json.dumps(degree_status, indent=2) if degree_status else "[]"
 
-    normalized_mode = (mode or "").strip().lower()
-    if normalized_mode not in ("upcoming_semester", "four_year_plan", "view_progress"):
-        normalized_mode = "undecided"
-
-    # Extract student name if available
-    student_info = parsed_fields.get("student_info", {})
-    student_name = student_info.get("name", "").split()[0] if student_info.get("name") else ""
-    student_name = student_name.replace(",", "").strip()
-
-    if context == "explore":
-        system_prompt = f"""
-You are a helpful and knowledgeable academic advisor assistant for Chapman University students.
-Your goal is to help the student explore their academic options, understand their degree progress, and plan their future.
+    system_prompt = f"""
+You are a helpful academic advisor for Chapman University students.
 
 Student: {student_name or 'Student'}
-Current Context:
-- Program: {student_info.get('program', 'Unknown')}
-- Catalog Year: {student_info.get('catalog_year', 'Unknown')}
+Program: {student_info.get('program', 'Unknown')}
+Catalog Year: {student_info.get('catalog_year', 'Unknown')}
 
 **DEGREE STATUS**:
 {degree_status_str}
@@ -707,121 +758,37 @@ Current Context:
 {catalog_str}
 
 **INSTRUCTIONS**:
-- Be encouraging, reflective, and helpful.
-- Answer questions about their specific degree progress using the provided data.
-- If they ask about courses, use the catalog requirements to guide them.
-- Keep responses concise (under 150 words) unless a detailed explanation is needed.
-- Use markdown for formatting (lists, bolding).
+- Be helpful and encouraging
+- Answer questions about their degree progress
+- Keep responses concise (under 150 words)
+- Use markdown for formatting
 
 **OUTPUT FORMAT (XML)**:
 <response>
-  <message>Your response here (markdown supported)</message>
+  <message>Your response here</message>
   <suggestions>
-    <suggestion>Follow-up question 1</suggestion>
-    <suggestion>Follow-up question 2</suggestion>
-    <suggestion>Follow-up question 3</suggestion>
+    <suggestion>Follow-up 1</suggestion>
+    <suggestion>Follow-up 2</suggestion>
+    <suggestion>Follow-up 3</suggestion>
   </suggestions>
 </response>
 """
-    else:
-        # Default Onboarding Prompt
-        system_prompt = f"""
-You are a friendly academic advisor helping onboard a student to EduTrackr.
 
-**YOUR ONLY GOAL**: Quickly gather key information so we can build their schedule AFTER this chat. Do NOT draft schedules or list courses.
-
-Student: {student_name or 'Student'}
-Current mode: {normalized_mode}
-
-**FORMATTING RULES** (CRITICAL):
-- Use emojis to make questions clear and scannable
-- Put each question on its OWN line with a blank line between them
-- Use **bold** for key options
-- Keep total response under 80 words
-
-**EMOJI GUIDE**:
-- 📚 for credit load questions
-- ⏰ for schedule/time questions  
-- 💼 for work/job questions
-- 🌴 for summer questions
-- 🎯 for goals/focus questions
-- ✅ for confirmations
-- 📋 for planning mode choice
-
-**EXAMPLE FORMAT** (follow this structure):
-✅ Got it — next semester planning!
-
-📚 **Credit load**: Light (9-12), Standard (12-15), or Heavy (15-18)?
-
-⏰ **Schedule**: Any days to avoid or time preferences?
-
-**WHAT TO COLLECT** (1-2 questions per message):
-1. Planning goal (semester/4-year/progress)
-2. Credit load preference
-3. Schedule constraints (work, time preferences)
-4. Summer availability
-5. Focus areas (if any)
-
-**FIRST MESSAGE** (if mode is undecided):
-Hi {student_name or 'there'}! 👋 I'll ask a few quick questions to personalize your experience.
-
-📋 What would you like to focus on?
-- **Next semester** planning
-- **Full 4-year** path  
-- **View progress** so far
-
-**COMPLETION**: After 3-4 exchanges, say:
-✅ Perfect! I have what I need. Click **Go to Dashboard** to see your personalized plan!
-
-**SUGGESTIONS RULES** (CRITICAL):
-The 3 suggestions MUST directly answer the question you just asked. Match them to YOUR question:
-
-If you asked about PLANNING MODE → suggestions: "Next semester", "Full 4-year plan", "View my progress"
-If you asked about CREDIT LOAD → suggestions: "9-12 credits (Light)", "12-15 credits", "15-18 credits (Heavy)"
-If you asked about SCHEDULE → suggestions: "Mornings only", "No Fridays", "Flexible schedule"
-If you asked about SUMMER → suggestions: "Yes to summer", "No summer classes", "Maybe one course"
-If you asked about WORK/JOBS → suggestions: "I work part-time", "Full-time job", "No work commitments"
-
-OUTPUT FORMAT (XML):
-<response>
-  <message>Your formatted message with emojis and line breaks</message>
-  <suggestions>
-    <suggestion>Answer matching your question</suggestion>
-    <suggestion>Another valid answer</suggestion>
-    <suggestion>Third option</suggestion>
-  </suggestions>
-</response>
-
-Example for first message (asking about planning mode):
-<suggestions>
-  <suggestion>Next semester</suggestion>
-  <suggestion>Full 4-year plan</suggestion>
-  <suggestion>View my progress</suggestion>
-</suggestions>
-"""
-
-    # 2. Get History
     history = get_chat_history(session_id)
-
     messages = [{"role": "system", "content": system_prompt}] + history
-
     if user_message:
         messages.append({"role": "user", "content": user_message})
-        save_message(session_id, "user", user_message)
 
-    def _parse_xml_envelope(raw: str) -> (str, List[str]):
-        # Trim any accidental markdown fences
+    def _parse_xml_envelope(raw: str) -> Tuple[str, List[str]]:
         text = raw.strip()
         if text.startswith("```"):
-            # remove leading ``` or ```xml
             first_newline = text.find("\n")
             if first_newline != -1:
-                text = text[first_newline + 1 :]
+                text = text[first_newline + 1:]
         if text.endswith("```"):
             text = text[:-3]
         text = text.strip()
 
-        # If there's any junk before <response>, cut it off
         idx = text.find("<response")
         if idx > 0:
             text = text[idx:]
@@ -844,15 +811,11 @@ Example for first message (asking about planning mode):
                 if candidate:
                     suggestions_local.append(candidate)
 
-        # Ensure max 3 suggestions
-        suggestions_local = suggestions_local[:3]
-        return reply_text_local, suggestions_local
+        return reply_text_local, suggestions_local[:3]
 
-    # 3. Call LLM
     try:
         if not client.api_key:
-            print("Warning: OPENAI_API_KEY not set. Using mock reply.")
-            reply_text = "I'm ready to help, but my brain (OpenAI Key) is missing."
+            reply_text = "I'm ready to help, but my configuration needs attention."
             suggestions: List[str] = []
         else:
             response = client.chat.completions.create(
@@ -865,16 +828,12 @@ Example for first message (asking about planning mode):
 
     except Exception as e:
         print(f"OpenAI API Error: {e}")
-        reply_text = "I'm having a moment - let me help you another way. What would you like to focus on?"
+        reply_text = "I'm having trouble right now. What would you like help with?"
         suggestions = ["Plan my next semester", "Show my degree progress", "What courses do I need?"]
 
-    # 4. Save Reply (only the text part shown to the user)
     save_message(session_id, "assistant", reply_text)
 
-    return {
-        "reply": reply_text,
-        "suggestions": suggestions,
-    }
+    return {"reply": reply_text, "suggestions": suggestions}
 
 
 def generate_reply_stream(
@@ -887,6 +846,9 @@ def generate_reply_stream(
 ):
     """Generator that yields streaming chunks for the chat response.
     
+    For onboarding context: Uses deterministic responses for reliable flow.
+    For explore context: Uses LLM for open-ended conversation.
+    
     Yields dictionaries with keys:
     - 'type': 'chunk' | 'suggestions' | 'done' | 'error'
     - 'content': the text chunk or suggestions list
@@ -894,48 +856,58 @@ def generate_reply_stream(
     
     # 1. Get PDF Context (student-specific)
     parsed_data = load_parsed_data(email)
-    context_str = ""
     parsed_fields: Dict[str, Any] = {}
     if parsed_data and "parsed_data" in parsed_data:
         parsed_fields = parsed_data["parsed_data"] or {}
-        context_str = json.dumps(parsed_fields, indent=2)
     
-    # 1b. Attach official catalog program requirements
-    catalog_context = _build_catalog_context(parsed_fields) if parsed_fields else None
-    catalog_str = json.dumps(catalog_context, indent=2) if catalog_context else "null"
-    
-    # 1c. Compute requirement status
-    degree_status = _compute_degree_status(parsed_fields, catalog_context)
-    degree_status_str = json.dumps(degree_status, indent=2) if degree_status else "[]"
-    
-    normalized_mode = (mode or "").strip().lower()
-    if normalized_mode not in ("upcoming_semester", "four_year_plan", "view_progress"):
-        normalized_mode = "undecided"
-    
-    # Extract student name if available
+    # Extract student first name from "Last, First" format
     student_info = parsed_fields.get("student_info", {})
-    student_name = student_info.get("name", "").split()[0] if student_info.get("name") else ""
-    student_name = student_name.replace(",", "").strip()
+    student_name = _extract_first_name(student_info.get("name", ""))
+    name_greeting = student_name or "there"
     
     # 1d. Get current preferences and parse user's response
     current_prefs = get_scheduling_preferences(user_id)
     if user_message and context == "onboarding":
         current_prefs, field_saved = parse_and_save_user_response(user_id, user_message, current_prefs)
     
-    # Check if we have enough info
+    # Check status
     is_complete, missing_fields = check_onboarding_completeness(current_prefs)
     next_topic = get_next_question_topic(current_prefs)
     collected_summary = get_collected_summary(current_prefs)
     
-    if context == "explore":
-        system_prompt = f"""
-You are a helpful and knowledgeable academic advisor assistant for Chapman University students.
-Your goal is to help the student explore their academic options, understand their degree progress, and plan their future.
+    # Save user message to history
+    if user_message:
+        save_message(session_id, "user", user_message)
+    
+    # ========== ONBOARDING: Use deterministic responses ==========
+    if context == "onboarding":
+        response, suggestions = _get_onboarding_response(
+            next_topic, is_complete, name_greeting, collected_summary
+        )
+        
+        # Stream the response character by character (simulate typing)
+        for char in response:
+            yield {"type": "chunk", "content": char}
+        
+        # Save the response
+        save_message(session_id, "assistant", response)
+        
+        # Send suggestions
+        yield {"type": "suggestions", "content": suggestions}
+        return
+    
+    # ========== EXPLORE: Use LLM for open-ended conversation ==========
+    catalog_context = _build_catalog_context(parsed_fields) if parsed_fields else None
+    catalog_str = json.dumps(catalog_context, indent=2) if catalog_context else "null"
+    degree_status = _compute_degree_status(parsed_fields, catalog_context)
+    degree_status_str = json.dumps(degree_status, indent=2) if degree_status else "[]"
+    
+    system_prompt = f"""
+You are a helpful academic advisor for Chapman University students.
 
 Student: {student_name or 'Student'}
-Current Context:
-- Program: {student_info.get('program', 'Unknown')}
-- Catalog Year: {student_info.get('catalog_year', 'Unknown')}
+Program: {student_info.get('program', 'Unknown')}
+Catalog Year: {student_info.get('catalog_year', 'Unknown')}
 
 **DEGREE STATUS**:
 {degree_status_str}
@@ -944,114 +916,24 @@ Current Context:
 {catalog_str}
 
 **INSTRUCTIONS**:
-- Be encouraging, reflective, and helpful.
-- Answer questions about their specific degree progress using the provided data.
-- If they ask about courses, use the catalog requirements to guide them.
-- Keep responses concise (under 150 words) unless a detailed explanation is needed.
-- Use markdown for formatting (lists, bolding).
-- Do NOT ask the onboarding questions (credit load, work status, etc.) unless relevant to the user's query.
+- Be helpful and encouraging
+- Answer questions about their degree progress
+- Keep responses concise (under 150 words)
+- Use markdown for formatting
 
-**OUTPUT FORMAT**:
-Just respond with your message directly. Do NOT use any special markers like [RESPONSE START] or [RESPONSE END].
-You may optionally include follow-up suggestions at the very end using this format:
+Respond naturally. At the end, optionally add:
 [SUGGESTIONS]
 Suggestion 1
 Suggestion 2
 Suggestion 3
 [/SUGGESTIONS]
-
-If no suggestions, just provide the response text with no special markers.
-"""
-    else:
-        # Build the system prompt - ONE question at a time
-        system_prompt = f"""
-You are a friendly academic advisor helping onboard a student to EduTrackr.
-
-**YOUR ONLY GOAL**: Collect ONE piece of information at a time. Ask only ONE question per message.
-
-Student: {student_name or 'Student'}
-Current mode: {normalized_mode}
-
-**ALREADY COLLECTED** (DO NOT ask about these again):
-{collected_summary}
-
-**NEXT TOPIC TO ASK**: {next_topic}
-**ONBOARDING COMPLETE**: {is_complete}
-
-**CRITICAL RULES**:
-1. Ask only ONE question per message - never two or more
-2. Keep responses under 60 words
-3. Use emojis for visual clarity
-4. Use **bold** for options
-5. Be friendly and conversational, not robotic
-
-**EMOJI GUIDE**:
-- 📋 planning mode | 📚 credits | ⏰ schedule | 💼 work | 🌴 summer | 🎯 focus | ✅ confirmations
-
-**QUESTION TEMPLATES** (use the one matching next_topic):
-
-If next_topic is "planning_mode":
-Hi {student_name or 'there'}! 👋 I'm your academic advisor. I'll ask a few quick questions to personalize your plan.
-
-📋 First, what's your main focus right now?
-- **Next semester** planning
-- **Full 4-year** path
-- **View progress** so far
-
-If next_topic is "credits":
-✅ Got it.
-
-📚 How about **credit load**? **Light** (9-12), **Standard** (12-15), or **Heavy** (15-18)?
-
-If next_topic is "time_preference":
-✅ Noted.
-
-⏰ When do you prefer classes? **Mornings**, **Afternoons**, **Evenings**, or **Flexible**?
-
-If next_topic is "work_status":
-✅ Perfect.
-
-💼 Do you have **work** commitments? **Part-time**, **Full-time**, or **No work**?
-
-If next_topic is "summer":
-✅ Great.
-
-🌴 Are you open to **Summer** classes? **Yes**, **No**, or **Maybe one course**?
-
-If next_topic is "focus":
-✅ Almost done.
-
-🎯 What's your top **priority**? **Major requirements**, **Electives/interests**, or **Graduate on time**?
-
-If next_topic is "complete" OR is_complete is True:
-✅ **All set, {student_name or 'there'}!** I've saved your preferences:
-
-📝 {collected_summary}
-
-I'm ready to help you explore! You can ask me anything about your degree, or click the **Go to Dashboard** button above to see your full plan.
-
-**SUGGESTIONS** (MUST match your question):
-- planning_mode: ["Next semester", "Full 4-year plan", "View my progress"]
-- credits: ["Light (9-12)", "Standard (12-15)", "Heavy (15-18)"]
-- time_preference: ["Mornings", "Afternoons", "Flexible"]
-- work_status: ["Part-time work", "Full-time job", "No work"]
-- summer: ["Yes to summer", "No summer", "Maybe one course"]
-- focus: ["Major requirements", "Electives", "Graduate on time"]
-- complete: ["Show my degree progress", "What courses do I need?", "Change preferences"]
-
-OUTPUT: Plain markdown, then on a NEW LINE at the very end:
-[SUGGESTIONS: "answer1", "answer2", "answer3"]
 """
 
-    # 2. Get History
     history = get_chat_history(session_id)
     messages = [{"role": "system", "content": system_prompt}] + history
-
     if user_message:
         messages.append({"role": "user", "content": user_message})
-        save_message(session_id, "user", user_message)
 
-    # 3. Stream from LLM
     full_response = ""
     suggestions: List[str] = []
     
@@ -1073,33 +955,97 @@ OUTPUT: Plain markdown, then on a NEW LINE at the very end:
                 text = chunk.choices[0].delta.content
                 full_response += text
                 
-                # Check if we've hit the suggestions marker
-                if "[SUGGESTIONS:" not in full_response:
+                # Don't stream the suggestions marker
+                if "[SUGGESTIONS]" not in full_response:
                     yield {"type": "chunk", "content": text}
         
-        # Parse suggestions from the end of the response
-        if "[SUGGESTIONS:" in full_response:
-            parts = full_response.split("[SUGGESTIONS:")
+        # Parse suggestions from the response
+        if "[SUGGESTIONS]" in full_response:
+            parts = full_response.split("[SUGGESTIONS]")
             clean_response = parts[0].strip()
-            suggestions_part = parts[1] if len(parts) > 1 else ""
-            
-            # Extract suggestions (re is already imported at top of file)
-            matches = re.findall(r'"([^"]+)"', suggestions_part)
-            suggestions = matches[:3]
-            
-            # If we streamed the suggestions marker, we need to not save it
+            suggestions_part = parts[1].split("[/SUGGESTIONS]")[0] if len(parts) > 1 else ""
+            suggestions = [s.strip() for s in suggestions_part.strip().split("\n") if s.strip()][:3]
             full_response = clean_response
         
-        # Save the clean response
         save_message(session_id, "assistant", full_response)
         
-        # Send suggestions
         if suggestions:
             yield {"type": "suggestions", "content": suggestions}
         else:
-            yield {"type": "suggestions", "content": ["Plan my next semester", "Show my degree progress", "What courses do I need?"]}
+            yield {"type": "suggestions", "content": ["What courses do I need?", "Show my progress", "Help me plan"]}
             
     except Exception as e:
         print(f"OpenAI Streaming Error: {e}")
-        yield {"type": "chunk", "content": "I'm having a moment - let me help you another way. What would you like to focus on?"}
+        yield {"type": "chunk", "content": "I'm having trouble right now. What would you like help with?"}
         yield {"type": "suggestions", "content": ["Plan my next semester", "Show my degree progress", "What courses do I need?"]}
+
+
+def _get_onboarding_response(next_topic: str, is_complete: bool, name: str, summary: str) -> Tuple[str, List[str]]:
+    """
+    Returns deterministic (response, suggestions) for onboarding flow.
+    This ensures consistent, predictable behavior without LLM variability.
+    """
+    
+    if next_topic == "planning_mode":
+        response = f"""Hi {name}! 👋 I'll ask a few quick questions to personalize your plan.
+
+📋 What would you like to focus on?
+• **Next semester** planning
+• **Full 4-year** path
+• **View progress** so far"""
+        suggestions = ["Next semester", "Full 4-year plan", "View my progress"]
+    
+    elif next_topic == "credits":
+        response = """✅ Got it!
+
+📚 How many **credits** do you want to take?
+• **Light** (9-12 credits)
+• **Standard** (12-15 credits)
+• **Heavy** (15-18 credits)"""
+        suggestions = ["Light (9-12)", "Standard (12-15)", "Heavy (15-18)"]
+    
+    elif next_topic == "time_preference":
+        response = """✅ Noted!
+
+⏰ When do you prefer classes?
+• **Mornings**
+• **Afternoons**
+• **Flexible**"""
+        suggestions = ["Mornings", "Afternoons", "Flexible"]
+    
+    elif next_topic == "work_status":
+        response = """✅ Perfect!
+
+💼 Do you have work commitments?
+• **Part-time** job
+• **Full-time** job
+• **No work**"""
+        suggestions = ["Part-time", "Full-time job", "No work"]
+    
+    elif next_topic == "summer":
+        response = """✅ Great!
+
+🌴 Are you open to **summer** classes?
+• **Yes**
+• **No**
+• **Maybe one course**"""
+        suggestions = ["Yes to summer", "No summer", "Maybe one course"]
+    
+    elif next_topic == "focus":
+        response = """✅ Almost done!
+
+🎯 What's your top priority?
+• **Major requirements** first
+• **Electives/interests**
+• **Graduate on time**"""
+        suggestions = ["Major requirements", "Electives", "Graduate on time"]
+    
+    else:  # complete
+        response = f"""✅ **All set, {name}!** I've saved your preferences.
+
+📝 {summary}
+
+Click **Go to Dashboard** above to see your personalized schedule, or ask me anything about your degree!"""
+        suggestions = ["Show my degree progress", "What courses do I need?", "Go to Dashboard"]
+    
+    return response, suggestions

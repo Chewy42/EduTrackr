@@ -1,0 +1,44 @@
+import collections
+
+CIPHER_TEXT = """@%ZP)ixLriNY)b1TtbZ%da!g8C9D[b1gsC^g[ap]8i9Jdb1gdbZTrj9%si9PYzFgsD9#/>Z%datFsj?%)b?Fri!(da.#sj?#syYm@%ZA[b1MrW^!YzEy8j<%[a!DYTYM0z)y/>Zi)aN.d6YmYD1MsC#]dPYM0z)y/>ZPtW^%tX0y-zUj1zAN1(8%0TQ$YC9]dX0y-zUj1PwP0(QM0TQ$YC?x@b13)i1.sDZFrCsy-D$y(6Yma.g$Y#?.YzFrb6My9%Yma.g$Y#?EYzFr@%ZPtW^%t^?Fra8y-zUM0P9pb6My9Wwy-#Jt/>ZWYzFrb6My8iUy-#Jt/>Z(t6Yma..pv6Mysi9Jdb1gdbYy-yZPsXZFrCs%0TYiYyMysi9Jdb1gdbZP(idCdbZ#d>Yma%Z(sXZFrCsybbg$@%ZzrW^Ps%YmYA^YYT0P06gM06Y$YD?FtWN#YzEy6W#PtWp%@6<Ldy<4[Wpgrit%)b<E@6Y$YC?Fsj<$)b#U)b#PYzEy(9sy/>Z$ri1xtW#LryYmYA.LtaNgrikw4i9]tW9%YTYN0%Y$YD<%rid#sj1LsyYmYA.xsC#xrC!xYU?xtC#Priky/>ZzsC9A[b?PYzEP/>ZMsCpCdb1PrjZ6)b?FrCsy-C!.rWM$YC?Fsj<$)b#8[a.#YzEy1TEM0X<JY>gw1(EN1b<JYyMyri1ztbZ%da!zd8?xtWUy-D$ysj?xsD?PYzEN1P)!0(8.0zQM/>Z#rC?PYzEN1Psk0PUM0TQM/>ZA)b#P(i1ztbZ%[a!DYzFnYAgy-#JnYD1g)bZg9W#Jd6Ym-()M/>Z#rC?8[a.#YzEN0T0.v9g$Y#?.YzFrb6My9%Ymaj$ysj?xsD?8[a.#YzE!1zQ$YC9]d^?Fra8y-zUM0P9pb6My9Wwy-#Jt/>ZWYzFrb6My8iUy-#Jt/>Z(t6Yma..pv6Mysi9Jdb1gdbYy-yZPsXZFrCs%0TYiYyMysi9Jdb1gdbZP(idCdbZ#d>Yma%Z(sXZFrCsybbg$@%ZzrW^Ps%YmYA^YYT0P0ygM06Y$YD?FtWN#YzEy(apAdbZ]YU^%t>Y$YC?Fsj<$)b#U)b#PYzEy9X98[>Y$YCNL)i^g[ap]YzEy(ap.rX?Lry<Tda!gdbYw0zUPYyMysXZLdC9Psip%YzEy?W9yrjZx[><(riNLryY$YC1%da?FtX0y-z0$YD<%rid#sj1Ls#ZxtW#]d%YmrD9$r>MydW#PsWNx@9?Fra8y-yYN0TEP0W^JY>gw0(Um1T9xr6Y$YCpz)j9%sC9])i9U)b?xYzFnYD1g)bZgs%Ym0(si-(U.1(YM0>Myda!As%Ym0(sj-T0N0TQM0>MydW^!sgpz)j9%sC#]d%Ym@%Z1YzFrb6My9X8y-#JnYD1g)bZg9W#Jd6Ym1z0M/>Z#rC?8[a.#YzEj0T9pb6My9%Yma.g$Y#?EYzFr@%ZPtW^%t^?Fra8y-z)P0>Myda!A9W#Jd6Ym1PQ.v9g$YA)y-#Jt/>Z()6Yma.g$Y#1.YzFrbb.p/>ZPda.#sj?#syYmYD1MsC#]dPYM0z)y/>ZPda.#sj?#sD13dCd#sC9AYzFrY#1MsC#]d%Ztv6NnYC1$)b1PYzEy48ww0P4N/(QNYyMytW#grW8y-yZTri!gda.MrjZxsDAw4bZg-zU!1PQJ8XZ#si9]t>Y$YC?Fsj<$)b#U)b#PYzEy(9sy/>Z$ri1xtW#LryYmY#?>46Y$YD<%rid#sj1LsyYmYA.xsC#xrC!xYU?xtC#Priky/>ZzsC9A[b?PYzEP/>ZMsCpCdb1PrjZ6)b?FrCsy-C!.rWM$YC?Fsj<$)b#8[a.#YzEy1(EP0X<JY>gw1zEg1b<JYyMyri1ztbZ%da!zd8?xtWUy-D$ysj?xsD?PYzEN1P)!0(8.0zQM/>Z#rC?PYzEN1Psk0PUM0TQM/>ZA)b#P(i1ztbZ%[a!DYzFnYAgy-#JnYD1g)bZg9W#Jd6Ym0(Q.0>Myda!A9W#Jd6Ym0(U%1b.t/>Z8t6Yma.g$Y#sy-#JnYD1g)bZg9W#Jd6Ym0(Q.0>Myda!A9W#Jd6Ym0(U%1b.t/>Z8[>Yma.g$YA)y-#Jt/>Z()6Yma.g$Y#1.YzFrbb.p/>ZPda.#sj?#syYmYD1MsC#]dPYM0z)y/>ZPda.#sj?#sD13dCd#sC9AYzFrY#1MsC#]d%Ztv6NnYC1$)b1PYzEy48ww0P8M/(QNYyMytW#grW8y-yZT[XZLrapM[Wpy[aUJ4ix%ri.LsWxFrW#x-y<TriNLsy<xrC4wtWx#YU.x[i#]d%<Ldy<g[W8w4b?$)a!g[a0w9ip%rW4y/>ZA[b1MrW^!?W^!s%YmY#?.9Wwy/>Z$ri1xtW#LryYmYA.LtaNgrikw4i9]tW9%YU1LrCd#sC9])i8w0zUiYyMysXZLdC9Psip%YzEy4a.!YUZ.ri!LYyMy)jZ#dW#gs%Ym0%MysXZLdC9Psip%8C^g[a!DYzEy1z8y/>ZA[b1MrW^!9W#Jd6YmYzUm0T<Mr6QJYTYm0(9Mr6Y$YCpz)j9%sC9])i9U)b?xYzFnYD1g)bZgs%Ym0(si-(U.1(YM0>Myda!As%Ym0(sj-T0N0TQM0>MydW^!sgpz)j9%sC#]d%Ym@%Z1YzFrb6My9X8y-#JnYD1g)bZg9W#Jd6Ym1PwM/>Z#rC?8[a.#YzEk1(9pb6My9%Yma.g$Y#?EYzFr@%ZPtW^%t^?Fra8y-zsk0>Myda!A9W#Jd6Ym-T8.v9g$YA)y-#Jt/>Z()6Yma.g$Y#1.YzFrbb.p/>ZPda.#sj?#syYmYD1MsC#]dPYM0z)y/>ZPda.#sj?#sD13dCd#sC9AYzFrY#1MsC#]d%Y$YAdxrWMybbg$@%ZzrW^Ps%YmYA^YYT0j-6gM06Y$YD?FtWN#YzEy8CpJd(Ew0PQM0><dda^%s%<Ldy<g[W8w?b?#sC!xr><T[b?!YyMydW#PsWNx@8?x@b0y-yZ19%Y$YCNL)i^g[ap]YzEy(ap.rX?Lry<Tda!gdbYw0zUPYyMysXZLdC9Psip%YzEy6D9PtW#]Y^txrX1EYyMy)jZ#dW#gs%Ym0%MysXZLdC9Psip%8C^g[a!DYzEy1(Qy/>ZA[b1MrW^!9W#Jd6YmYzUm0T<Mr6QJYTYm0(9Mr6Y$YCpz)j9%sC9])i9U)b?xYzFnYD1g)bZgs%Ym0(si-(U.1(YM0>Myda!As%Ym0(sj-T0N0TQM0>MydW^!sgpz)j9%sC#]d%Ym@%Z1YzFr@%ZPtW^%t^?Fra8y-zsk0>Myda!A9W#Jd6Ym-T8.v9g$Y#?.YzFrb6My9%Ymaj$ysj?xsD?8[a.#YzEj-TQ$YC9]d^?Fra8y-zw.1b.t/>Z8[>Yma.g$YA)y-#Jt/>Z()6Yma.g$Y#1.YzFrbb.p/>ZPda.#sj?#syYmYD1MsC#]dPYM0z)y/>ZPda.#sj?#sD13dCd#sC9AYzFrY#1MsC#]d%Ztv6NnYC1$)b1PYzEy48.(9>QN0TYJ0TUy/>Zg[b?$d6YmYA#]tXZLdX9ztW#Lry<gr%<<si#xry<<ra9%[a1xry<(tX9A[a9PYyMydW#PsWNx@8?x@b0y-yZ8t9?EYyMyrWpz)b?Friky-yZ84AUy/>ZMsCpCdb1PrjYy-yZ84AUy/>ZzsC9A[b?PYzEP/>ZMsCpCdb1PrjZ6)b?FrCsy-C!.rWM$YC?Fsj<$)b#8[a.#YzEy0zEP0X<JY>gw0PEg1b<JYyMyri1ztbZ%da!zd8?xtWUy-D$ysj?xsD?PYzEN1P)!0(8.0zQM/>Z#rC?PYzEN1Psk0PUM0TQM/>ZA)b#P(i1ztbZ%[a!DYzFnYAgy-#Jt/>Z8t6Ymaj$ysj?xsD?8[a.#YzEk1PQ$YC9]d^?Fra8y-zAg1b.t/>ZbYzFrb6My9Wwy-#JnYD1g)bZg9W#Jd6Ym-TsM/>Z#rC?8[a.#YzE!1T9pb6My?yYma.g$Y#1xYzFrb6My8j8y-#Jtvbg$YD1#ra9PtW9%YzEysj<%[a!D0zQ%1yY$YD1#ra9PtW9%sgpCdC9%da4y-#$y8j<%[a!DYyMy?C^$r>Ztv6NnYC1$)b1PYzEy48.(9>QP-TQJ0TUy/>Zg[b?$d6YmYA1ErjQw8j9#@6<gr%<g[W8w6ipD[6<8)a1LY^?%ta1H-y<<si#xry<<ra9%[a1xry<WripAYW^]d><ZdW9]tW#g@6Y$YC?Fsj<$)b#U)b#PYzEy(9sy/>Z$ri1xtW#LryYmY#?>46Y$YD<%rid#sj1LsyYmY#1gdb<E)a!Fd6<8)aJxsC^D)btxYyMy)jZ#dW#gs%Ym0%MysXZLdC9Psip%8C^g[a!DYzEy1Pwy/>ZA[b1MrW^!9W#Jd6YmYzUm0T<Mr6QJYTYm0(9Mr6Y$YCpz)j9%sC9])i9U)b?xYzFnYD1g)bZgs%Ym0(si-(U.1(YM0>Myda!As%Ym0(sj-T0N0TQM0>MydW^!sgpz)j9%sC#]d%Ym@%Z1YzFr@%ZPtW^%t^?Fra8y-zsk0>Myda!A9W#Jd6Ym-T8.v9g$Y#?.YzFrb6My9%Ymaj$ysj?xsD?8[a.#YzEj-TQ$YC9]d^?Fra8y-zw.1b.t/>Z8[>Yma.g$YA)y-#Jt/>Z()6Yma.g$Y#1.YzFrbb.p/>ZPda.#sj?#syYmYD1MsC#]dPYM0z)y/>ZPda.#sj?#sD13dCd#sC9AYzFrY#1MsC#]d%Ztv6NnYC1$)b1PYzEy48!86>QN0TYJ0T0y/>Zg[b?$d6YmYA1.rX?.sC^$YU^]tWx%rj<LrWpD@6Y$YC?Fsj<$)b#U)b#PYzEy9X98[>Y$YCNL)i^g[ap]YzEy9UZ<YyMysXZLdC9Psip%YzEy6CpP[X9xYUNF)b1Eda!Hr%Y$YC1%da?FtX0y-z0$YD<%rid#sj1Ls#ZxtW#]d%YmYzANYyMydW#PsWNx@9?Fra8y-yYN0TEM0W^JY>gw0(Um0(9xr6Y$YCpz)j9%sC9])i9U)b?xYzFnYD1g)bZgs%Ym0(si-(U.1(YM0>Myda!As%Ym0(sj-T0N0TQM0>MydW^!sgpz)j9%sC#]d%Ym@%Z1YzFrb6My9X8y-#JnYD1g)bZg9W#Jd6Ym1zQM/>Z#rC?8[a.#YzEi1P9pb6My9%Yma.g$Y#?EYzFr@%ZPtW^%t^?Fra8y-z)M0>Myda!A9W#Jd6Ym1zs.v9g$YA)y-#Jt/>Z()6Yma.g$Y#1.YzFrbb.p/>ZPda.#sj?#syYmYD1MsC#]dPYM0z)y/>ZPda.#sj?#sD13dCd#sC9AYzFrY#1MsC#]d%Y$YAdxrWMybbg$@%ZzrW^Ps%YmYA^-9Uww0(Q%/(QgYyMytW#grW8y-yZTtaNgtbZxr><<rD?EsCpMriNLdjAy/>ZA[b1MrW^!?W^!s%YmY#?.9Wwy/>Z$ri1xtW#LryYmY#?>46Y$YD<%rid#sj1LsyYmYAFLsix.)6<0[a^P[W9][i&y/>ZzsC9A[b?PYzEP/>ZMsCpCdb1PrjZ6)b?FrCsy-yY!06Y$YC?Fsj<$)b#8[a.#YzEy0(EM0X<JY>gw0zEN1b<JYyMyri1ztbZ%da!zd8?xtWUy-D$ysj?xsD?PYzEN1P)!0(8.0zQM/>Z#rC?PYzEN1Psk0PUM0TQM/>ZA)b#P(i1ztbZ%[a!DYzFnYAgy-#Jt/>Z8t6Ymaj$ysj?xsD?8[a.#YzEj-TQ$YC9]d^?Fra8y-zw.1b.t/>ZbYzFrb6My9Wwy-#JnYD1g)bZg9W#Jd6Ym1PwM/>Z#rC?8[a.#YzEk1(9pb6My?yYma.g$Y#1xYzFrb6My8j8y-#Jtvbg$YD1#ra9PtW9%YzEysj<%[a!D0zQ%1yY$YD1#ra9PtW9%sgpCdC9%da4y-#$y8j<%[a!DYyMy?C^$r>Ztv6NnYC1$)b1PYzEy48!86>QN0TYJ0TUy/>Zg[b?$d6YmYA1.rX?.sC^$YU^]tWx%rj<LrWpD@6Y$YC?Fsj<$)b#U)b#PYzEy(9tWYyMyrWpz)b?Friky-yZ84AUy/>ZMsCpCdb1PrjYy-yZ([X#E/9t#[6<d)a!DYyMy)jZ#dW#gs%Ym0%MysXZLdC9Psip%8C^g[a!DYzEy1PUy/>ZA[b1MrW^!9W#Jd6YmYzAm0T<xr6QJYTAm1(<xr6Y$YCpz)j9%sC9])i9U)b?xYzFnYD1g)bZgs%Ym0(si-(U.1(YM0>Myda!As%Ym0(sj-T0N0TQM0>MydW^!sgpz)j9%sC#]d%Ym@%Z1YzFr@%ZPtW^%t^?Fra8y-z8g0>Myda!A9W#Jd6Ym1(AMv9g$Y#?.YzFrb6My9%Ymaj$ysj?xsD?8[a.#YzE.1TQ$YC9]d^?Fra8y-z8!0X.t/>Z8[>Yma.g$YA)y-#JnYD1g)bZg9W#Jd6Ym1(4M/>Z#rC?8[a.#YzE.-(<pb6My8iUy-#Jt/>Z(t6Yma..pv6Mysi9Jdb1gdbYy-yZPsXZFrCs%0TYiYyMysi9Jdb1gdbZP(idCdbZ#d>Yma%Z(sXZFrCsy/>ZW)aN$Y#.pbbg="""
+
+def analyze():
+    c = collections.Counter(CIPHER_TEXT)
+    print("Total length:", len(CIPHER_TEXT))
+    print("Most common chars:")
+    for char, count in c.most_common(20):
+        print(f"{repr(char)}: {count}")
+    
+    # Guessing mapping
+    # Z -> " (quote)
+    # Y -> : (colon)
+    # % -> , (comma)
+    # @ -> { (open brace)
+    # > -> } (close brace)
+    # y -> space?
+    
+    # Let's verify this guess
+    mapping = {
+        'Z': '"',
+        'Y': ':',
+        '%': ',',
+        '@': '{',
+        '>': '}',
+        # common lowercase letters in keys "classes", "subject", etc
+        # r -> a
+        # s -> l
+        # i -> e
+        # n -> t
+        # c -> c
+        # etc
+    }
+    
+    decoded = []
+    for char in CIPHER_TEXT[:500]:
+        decoded.append(mapping.get(char, char))
+    
+    print("\nPartial Decode Attempt 1:")
+    print("".join(decoded))
+
+if __name__ == "__main__":
+    analyze()

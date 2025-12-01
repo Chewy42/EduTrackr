@@ -15,6 +15,7 @@ load_dotenv(os.path.join(root_dir, '.env'))
 
 from app.routes.evaluations_v2 import program_evaluations_bp
 from app.routes.chat import chat_bp
+from app.routes.schedule import schedule_bp
 from app.services.auth_tokens import decode_app_token_from_request, issue_app_token
 from app.services.evaluation_service import has_program_evaluation
 from app.services.supabase_client import supabase_request
@@ -259,16 +260,16 @@ def update_preferences():
         email = payload.get('email', '')
         if not email:
             return jsonify({'error': 'Invalid token'}), 401
-            
+
         data = request.get_json() or {}
-        
+
         # Get user_id
         user_resp = supabase_request("GET", f"/rest/v1/app_users?email=eq.{email}&select=id")
         if user_resp.status_code != 200 or not user_resp.json():
             return jsonify({'error': 'User not found'}), 404
         user_id = user_resp.json()[0]['id']
-        
-        # Build update payload
+
+        # Build update payload for user_preferences
         update_payload = {}
         if 'theme' in data:
             update_payload['theme'] = data['theme']
@@ -276,20 +277,92 @@ def update_preferences():
             update_payload['landing_view'] = data['landingView']
         if 'onboardingComplete' in data:
             update_payload['onboarding_complete'] = bool(data['onboardingComplete'])
-            
+
         if update_payload:
             supabase_request("PATCH", f"/rest/v1/user_preferences?user_id=eq.{user_id}", json=update_payload)
-            
+
+        # If onboardingAnswers provided, save to scheduling_preferences
+        if 'onboardingAnswers' in data:
+            answers = data['onboardingAnswers']
+            _save_onboarding_to_scheduling_preferences(user_id, answers)
+
         return jsonify({'status': 'ok'}), 200
-        
+
     except pyjwt.ExpiredSignatureError:
         return jsonify({'error': 'Token expired'}), 401
-    except Exception:
+    except Exception as e:
+        print(f"Error updating preferences: {e}")
         return jsonify({'error': 'Invalid token'}), 401
+
+
+def _save_onboarding_to_scheduling_preferences(user_id: str, answers: Dict[str, Any]) -> None:
+    """
+    Map onboarding answers to scheduling_preferences table fields.
+    """
+    # Build scheduling preferences payload from onboarding answers
+    sched_payload = {
+        "user_id": user_id,
+        "updated_at": datetime.utcnow().isoformat()
+    }
+    collected_fields = []
+
+    # Map planning_mode
+    if 'planning_mode' in answers:
+        sched_payload['planning_mode'] = answers['planning_mode']
+        collected_fields.append('planning_mode')
+
+    # Map credit_load to preferred_credits_min/max
+    credit_map = {
+        'light': (9, 12),
+        'standard': (12, 15),
+        'heavy': (15, 18)
+    }
+    if 'credit_load' in answers and answers['credit_load'] in credit_map:
+        min_cr, max_cr = credit_map[answers['credit_load']]
+        sched_payload['preferred_credits_min'] = min_cr
+        sched_payload['preferred_credits_max'] = max_cr
+        collected_fields.append('credits')
+
+    # Map schedule_preference to preferred_time_of_day
+    time_map = {
+        'mornings': 'morning',
+        'afternoons': 'afternoon',
+        'flexible': 'flexible'
+    }
+    if 'schedule_preference' in answers and answers['schedule_preference'] in time_map:
+        sched_payload['preferred_time_of_day'] = time_map[answers['schedule_preference']]
+        collected_fields.append('time_preference')
+
+    # Map work_status
+    if 'work_status' in answers:
+        sched_payload['work_status'] = answers['work_status']
+        collected_fields.append('work_status')
+
+    # Map priority to priority_focus
+    priority_map = {
+        'major': 'major_requirements',
+        'electives': 'electives',
+        'graduate': 'graduation_timeline'
+    }
+    if 'priority' in answers and answers['priority'] in priority_map:
+        sched_payload['priority_focus'] = priority_map[answers['priority']]
+        collected_fields.append('focus')
+
+    sched_payload['collected_fields'] = collected_fields
+
+    # Upsert to scheduling_preferences
+    existing_resp = supabase_request("GET", f"/rest/v1/scheduling_preferences?user_id=eq.{user_id}&select=id")
+    if existing_resp.status_code == 200 and existing_resp.json():
+        # Update existing
+        supabase_request("PATCH", f"/rest/v1/scheduling_preferences?user_id=eq.{user_id}", json=sched_payload)
+    else:
+        # Insert new
+        supabase_request("POST", "/rest/v1/scheduling_preferences", json=sched_payload)
 
 
 app.register_blueprint(program_evaluations_bp)
 app.register_blueprint(chat_bp)
+app.register_blueprint(schedule_bp)
 
 if __name__ == '__main__':
     explicit_backend_port = os.getenv('SERVER_PORT')

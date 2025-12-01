@@ -13,6 +13,7 @@ import OnboardingChat from "./components/OnboardingChat";
 import ExploreChatLayout from "./components/ExploreChatLayout";
 import SettingsPage from "./components/SettingsPage";
 import { ProgressPage } from "./components/progress";
+import ScheduleBuilder from "./components/schedule/ScheduleBuilder";
 
 export default function App() {
   const location = useLocation();
@@ -75,8 +76,8 @@ export default function App() {
       return <OnboardingChat />;
     }
 
-    // Progress page uses full-width layout
-    if (location.pathname === "/progress-page") {
+    // Home and Progress page use full-width layout with ProgressPage (dashboard)
+    if (location.pathname === "/" || location.pathname === "/progress-page") {
       return (
         <div className="flex h-screen w-screen overflow-hidden bg-surface-muted text-text-primary">
           <Sidebar />
@@ -109,6 +110,17 @@ export default function App() {
       );
     }
 
+    if (location.pathname === "/schedule-gen-home") {
+      return (
+        <div className="flex h-screen w-screen overflow-hidden bg-surface-muted text-text-primary">
+          <Sidebar />
+          <main className="flex-1 h-full overflow-hidden min-w-0">
+            <ScheduleBuilder />
+          </main>
+        </div>
+      );
+    }
+
     let title = "Welcome to EduTrackr";
     let subtitle = "You are signed in. Next: connect session state and onboarding.";
     let body: React.ReactNode = (
@@ -116,16 +128,6 @@ export default function App() {
         This placeholder view confirms authentication flow is working.
       </div>
     );
-
-    if (location.pathname === "/schedule-gen-home") {
-      title = "Generate Your Schedule";
-      subtitle = "Quickly build a balanced term around your preferences.";
-      body = (
-        <div className="text-sm text-text-secondary text-center py-1">
-          Schedule generation tools and recommendations will appear here.
-        </div>
-      );
-    }
 
     return (
       <div className="flex h-screen w-screen overflow-hidden bg-surface-muted text-text-primary">
