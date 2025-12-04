@@ -17,13 +17,15 @@ class SupabaseError(Exception):
         self.original_error = original_error
 
 
-class SupabaseConnectionError(SupabaseError):
-    """Raised when unable to connect to Supabase."""
+class SupabaseConnectionError(SupabaseError, ConnectionError):
+    """Raised when unable to connect to Supabase.
+    Inherits from ConnectionError for backward compatibility with existing catch blocks."""
     pass
 
 
-class SupabaseTimeoutError(SupabaseError):
-    """Raised when a request to Supabase times out."""
+class SupabaseTimeoutError(SupabaseError, Timeout):
+    """Raised when a request to Supabase times out.
+    Inherits from requests.exceptions.Timeout for backward compatibility."""
     pass
 
 
@@ -44,8 +46,9 @@ class SupabaseClientError(SupabaseError):
         self.response_body = response_body
 
 
-class SupabaseConfigError(SupabaseError):
-    """Raised when Supabase configuration is missing or invalid."""
+class SupabaseConfigError(SupabaseError, RuntimeError):
+    """Raised when Supabase configuration is missing or invalid.
+    Inherits from RuntimeError for backward compatibility with existing catch blocks."""
     pass
 
 
@@ -106,6 +109,7 @@ def supabase_request(
     path: str,
     timeout: Optional[int] = None,
     max_retries: Optional[int] = None,
+    raise_on_error: bool = False,
     **kwargs: Any
 ) -> requests.Response:
     """
@@ -116,6 +120,9 @@ def supabase_request(
         path: API path (e.g., /rest/v1/users)
         timeout: Request timeout in seconds (default: SUPABASE_TIMEOUT env var or 60)
         max_retries: Maximum number of retries for transient errors (default: SUPABASE_MAX_RETRIES or 3)
+        raise_on_error: If True, raise exceptions for 4xx/5xx responses. If False (default),
+                       return the response and let caller handle status codes. This maintains
+                       backward compatibility with existing code.
         **kwargs: Additional arguments passed to requests.request()
 
     Returns:
@@ -125,8 +132,8 @@ def supabase_request(
         SupabaseConfigError: If Supabase configuration is missing
         SupabaseConnectionError: If unable to connect to Supabase after retries
         SupabaseTimeoutError: If request times out after retries
-        SupabaseServerError: If Supabase returns a 5xx error after retries
-        SupabaseClientError: If Supabase returns a 4xx error
+        SupabaseServerError: If Supabase returns a 5xx error after retries (only if raise_on_error=True)
+        SupabaseClientError: If Supabase returns a 4xx error (only if raise_on_error=True)
         SupabaseError: For other unexpected errors
     """
     ensure_supabase_env()
@@ -169,20 +176,24 @@ def supabase_request(
                         f"Supabase request failed after {retries + 1} attempts: "
                         f"{method.upper()} {path} returned {response.status_code}"
                     )
-                    raise SupabaseServerError(
-                        f"Supabase server error: {response.status_code}",
-                        status_code=response.status_code
-                    )
+                    if raise_on_error:
+                        raise SupabaseServerError(
+                            f"Supabase server error: {response.status_code}",
+                            status_code=response.status_code
+                        )
+                    return response
             
             if 400 <= response.status_code < 500:
-                logger.warning(
-                    f"Supabase client error: {method.upper()} {path} returned {response.status_code}"
+                logger.debug(
+                    f"Supabase client response: {method.upper()} {path} returned {response.status_code}"
                 )
-                raise SupabaseClientError(
-                    f"Supabase client error: {response.status_code}",
-                    status_code=response.status_code,
-                    response_body=response.text
-                )
+                if raise_on_error:
+                    raise SupabaseClientError(
+                        f"Supabase client error: {response.status_code}",
+                        status_code=response.status_code,
+                        response_body=response.text
+                    )
+                return response
             
             logger.debug(f"Supabase request successful: {method.upper()} {path}")
             return response

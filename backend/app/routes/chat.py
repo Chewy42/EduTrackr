@@ -6,16 +6,16 @@ import json
 
 from app.services.auth_tokens import decode_app_token_from_request
 from app.services.chat_service import (
-	    get_or_create_onboarding_session, 
-	    create_explore_session,
-	    list_user_sessions,
-	    delete_chat_session,
-	    clear_explore_sessions,
-	    generate_reply,
-	    generate_reply_stream,
-	    get_chat_history, 
-	    reset_onboarding_session
-	)
+            get_or_create_onboarding_session, 
+            create_explore_session,
+            list_user_sessions,
+            delete_chat_session,
+            clear_explore_sessions,
+            generate_reply,
+            generate_reply_stream,
+            get_chat_history, 
+            reset_onboarding_session
+        )
 from app.services.supabase_client import supabase_request
 
 chat_bp = Blueprint("chat", __name__)
@@ -148,46 +148,45 @@ def list_sessions():
 
 @chat_bp.route("/chat/sessions/<session_id>", methods=["DELETE"])
 def delete_session(session_id: str):
-	    try:
-	        user_id, _ = _get_user_context()
-	    except Exception:
-	        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        user_id, _ = _get_user_context()
+    except Exception:
+        return jsonify({"error": "Unauthorized"}), 401
 
-	    try:
-	        delete_chat_session(user_id, session_id)
-	        # Idempotent delete – even if nothing was removed, this is a success
-	        return jsonify({"status": "ok"}), 200
-	    except Exception as e:
-	        print(f"Error deleting session {session_id}: {e}", file=sys.stderr)
-	        return jsonify({"error": "Failed to delete session"}), 500
+    try:
+        delete_chat_session(user_id, session_id)
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        print(f"Error deleting session {session_id}: {e}", file=sys.stderr)
+        return jsonify({"error": "Failed to delete session"}), 500
 
 
 @chat_bp.route("/chat/sessions", methods=["DELETE"])
 def clear_sessions():
-	    """Clear chat sessions for the current user.
+    """Clear chat sessions for the current user.
 
-	    Currently supports scope=explore to clear only "Explore My Options" sessions.
-	    An optional keep_session_id query param can be used to keep the active
-	    session if desired.
-	    """
-	    try:
-	        user_id, _ = _get_user_context()
-	    except Exception:
-	        return jsonify({"error": "Unauthorized"}), 401
+    Currently supports scope=explore to clear only "Explore My Options" sessions.
+    An optional keep_session_id query param can be used to keep the active
+    session if desired.
+    """
+    try:
+        user_id, _ = _get_user_context()
+    except Exception:
+        return jsonify({"error": "Unauthorized"}), 401
 
-	    scope = request.args.get("scope", "explore")
-	    keep_session_id = request.args.get("keep_session_id") or None
+    scope = request.args.get("scope", "explore")
+    keep_session_id = request.args.get("keep_session_id") or None
 
-	    try:
-	        if scope == "explore":
-	            cleared = clear_explore_sessions(user_id, keep_session_id=keep_session_id)
-	        else:
-	            return jsonify({"error": "Unsupported scope"}), 400
+    try:
+        if scope == "explore":
+            cleared = clear_explore_sessions(user_id, keep_session_id=keep_session_id)
+        else:
+            return jsonify({"error": "Unsupported scope"}), 400
 
-	        return jsonify({"cleared": cleared}), 200
-	    except Exception as e:
-	        print(f"Error clearing sessions (scope={scope}): {e}", file=sys.stderr)
-	        return jsonify({"error": "Failed to clear sessions"}), 500
+        return jsonify({"cleared": cleared}), 200
+    except Exception as e:
+        print(f"Error clearing sessions (scope={scope}): {e}", file=sys.stderr)
+        return jsonify({"error": "Failed to clear sessions"}), 500
 
 @chat_bp.route("/chat/history/<session_id>", methods=["GET"])
 def get_session_history_route(session_id):
