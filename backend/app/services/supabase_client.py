@@ -1,7 +1,52 @@
+import logging
 import os
-from typing import Any, Dict
+import time
+from typing import Any, Dict, Optional
 
 import requests
+from requests.exceptions import ConnectionError, HTTPError, RequestException, Timeout
+
+logger = logging.getLogger(__name__)
+
+
+class SupabaseError(Exception):
+    """Base exception for Supabase-related errors."""
+
+    def __init__(self, message: str, original_error: Optional[Exception] = None):
+        super().__init__(message)
+        self.original_error = original_error
+
+
+class SupabaseConnectionError(SupabaseError):
+    """Raised when unable to connect to Supabase."""
+    pass
+
+
+class SupabaseTimeoutError(SupabaseError):
+    """Raised when a request to Supabase times out."""
+    pass
+
+
+class SupabaseServerError(SupabaseError):
+    """Raised when Supabase returns a 5xx error."""
+
+    def __init__(self, message: str, status_code: int, original_error: Optional[Exception] = None):
+        super().__init__(message, original_error)
+        self.status_code = status_code
+
+
+class SupabaseClientError(SupabaseError):
+    """Raised when Supabase returns a 4xx error."""
+
+    def __init__(self, message: str, status_code: int, response_body: Optional[str] = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.response_body = response_body
+
+
+class SupabaseConfigError(SupabaseError):
+    """Raised when Supabase configuration is missing or invalid."""
+    pass
 
 
 def _get_env(key: str, default: str = "") -> str:
@@ -11,8 +56,11 @@ def _get_env(key: str, default: str = "") -> str:
 
 SUPABASE_URL = _get_env("SUPABASE_URL").rstrip("/")
 SUPABASE_ANON_KEY = _get_env("SUPABASE_ANON_KEY")
-# Prefer SERVICE_ROLE_KEY for backend admin access, fallback to ACCESS_TOKEN
 SUPABASE_SERVICE_KEY = _get_env("SUPABASE_SERVICE_ROLE_KEY") or _get_env("SUPABASE_ACCESS_TOKEN")
+
+DEFAULT_TIMEOUT = int(_get_env("SUPABASE_TIMEOUT", "60"))
+MAX_RETRIES = int(_get_env("SUPABASE_MAX_RETRIES", "3"))
+INITIAL_BACKOFF = float(_get_env("SUPABASE_INITIAL_BACKOFF", "1.0"))
 
 
 def supabase_configured() -> bool:
@@ -28,7 +76,7 @@ def ensure_supabase_env() -> None:
             missing.append("SUPABASE_ANON_KEY")
         if not SUPABASE_SERVICE_KEY:
             missing.append("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ACCESS_TOKEN")
-        raise RuntimeError(f"Missing Supabase configuration: {', '.join(missing)}")
+        raise SupabaseConfigError(f"Missing Supabase configuration: {', '.join(missing)}")
 
 
 def supabase_headers() -> Dict[str, str]:
@@ -39,16 +87,204 @@ def supabase_headers() -> Dict[str, str]:
     }
 
 
-def supabase_request(method: str, path: str, **kwargs: Any) -> requests.Response:
+def _is_retryable_error(error: Exception) -> bool:
+    """Determine if an error is transient and should be retried."""
+    if isinstance(error, (ConnectionError, Timeout)):
+        return True
+    if isinstance(error, HTTPError) and error.response is not None:
+        return 500 <= error.response.status_code < 600
+    return False
+
+
+def _is_retryable_response(response: requests.Response) -> bool:
+    """Determine if a response indicates a transient error that should be retried."""
+    return 500 <= response.status_code < 600
+
+
+def supabase_request(
+    method: str,
+    path: str,
+    timeout: Optional[int] = None,
+    max_retries: Optional[int] = None,
+    **kwargs: Any
+) -> requests.Response:
+    """
+    Make a request to Supabase with retry logic and error handling.
+
+    Args:
+        method: HTTP method (GET, POST, PUT, DELETE, etc.)
+        path: API path (e.g., /rest/v1/users)
+        timeout: Request timeout in seconds (default: SUPABASE_TIMEOUT env var or 60)
+        max_retries: Maximum number of retries for transient errors (default: SUPABASE_MAX_RETRIES or 3)
+        **kwargs: Additional arguments passed to requests.request()
+
+    Returns:
+        requests.Response object
+
+    Raises:
+        SupabaseConfigError: If Supabase configuration is missing
+        SupabaseConnectionError: If unable to connect to Supabase after retries
+        SupabaseTimeoutError: If request times out after retries
+        SupabaseServerError: If Supabase returns a 5xx error after retries
+        SupabaseClientError: If Supabase returns a 4xx error
+        SupabaseError: For other unexpected errors
+    """
     ensure_supabase_env()
+    
     url = f"{SUPABASE_URL}{path}"
     headers = kwargs.pop("headers", {})
     merged_headers = {**supabase_headers(), **headers}
-    timeout = kwargs.pop("timeout", 30)
-    return requests.request(
-        method=method.upper(),
-        url=url,
-        headers=merged_headers,
-        timeout=timeout,
-        **kwargs,
-    )
+    request_timeout = timeout if timeout is not None else DEFAULT_TIMEOUT
+    retries = max_retries if max_retries is not None else MAX_RETRIES
+    
+    last_error: Optional[Exception] = None
+    last_response: Optional[requests.Response] = None
+    
+    for attempt in range(retries + 1):
+        try:
+            logger.debug(
+                f"Supabase request attempt {attempt + 1}/{retries + 1}: {method.upper()} {path}"
+            )
+            
+            response = requests.request(
+                method=method.upper(),
+                url=url,
+                headers=merged_headers,
+                timeout=request_timeout,
+                **kwargs,
+            )
+            
+            if _is_retryable_response(response):
+                last_response = response
+                if attempt < retries:
+                    backoff = INITIAL_BACKOFF * (2 ** attempt)
+                    logger.warning(
+                        f"Supabase returned {response.status_code}, retrying in {backoff:.1f}s "
+                        f"(attempt {attempt + 1}/{retries + 1})"
+                    )
+                    time.sleep(backoff)
+                    continue
+                else:
+                    logger.error(
+                        f"Supabase request failed after {retries + 1} attempts: "
+                        f"{method.upper()} {path} returned {response.status_code}"
+                    )
+                    raise SupabaseServerError(
+                        f"Supabase server error: {response.status_code}",
+                        status_code=response.status_code
+                    )
+            
+            if 400 <= response.status_code < 500:
+                logger.warning(
+                    f"Supabase client error: {method.upper()} {path} returned {response.status_code}"
+                )
+                raise SupabaseClientError(
+                    f"Supabase client error: {response.status_code}",
+                    status_code=response.status_code,
+                    response_body=response.text
+                )
+            
+            logger.debug(f"Supabase request successful: {method.upper()} {path}")
+            return response
+            
+        except ConnectionError as e:
+            last_error = e
+            if attempt < retries:
+                backoff = INITIAL_BACKOFF * (2 ** attempt)
+                logger.warning(
+                    f"Connection error to Supabase, retrying in {backoff:.1f}s "
+                    f"(attempt {attempt + 1}/{retries + 1}): {e}"
+                )
+                time.sleep(backoff)
+            else:
+                logger.error(
+                    f"Failed to connect to Supabase after {retries + 1} attempts: {e}"
+                )
+                raise SupabaseConnectionError(
+                    f"Failed to connect to Supabase after {retries + 1} attempts",
+                    original_error=e
+                ) from e
+                
+        except Timeout as e:
+            last_error = e
+            if attempt < retries:
+                backoff = INITIAL_BACKOFF * (2 ** attempt)
+                logger.warning(
+                    f"Supabase request timed out, retrying in {backoff:.1f}s "
+                    f"(attempt {attempt + 1}/{retries + 1}): {e}"
+                )
+                time.sleep(backoff)
+            else:
+                logger.error(
+                    f"Supabase request timed out after {retries + 1} attempts: {e}"
+                )
+                raise SupabaseTimeoutError(
+                    f"Supabase request timed out after {retries + 1} attempts",
+                    original_error=e
+                ) from e
+                
+        except (SupabaseClientError, SupabaseServerError, SupabaseConfigError):
+            raise
+            
+        except RequestException as e:
+            logger.error(f"Unexpected request error to Supabase: {e}")
+            raise SupabaseError(
+                f"Unexpected error making request to Supabase: {e}",
+                original_error=e
+            ) from e
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in Supabase request: {e}")
+            raise SupabaseError(
+                f"Unexpected error: {e}",
+                original_error=e
+            ) from e
+    
+    if last_response is not None:
+        raise SupabaseServerError(
+            f"Supabase server error after {retries + 1} attempts",
+            status_code=last_response.status_code
+        )
+    elif last_error is not None:
+        raise SupabaseError(
+            f"Supabase request failed after {retries + 1} attempts",
+            original_error=last_error
+        )
+    else:
+        raise SupabaseError("Supabase request failed unexpectedly")
+
+
+def check_connection(timeout: Optional[int] = None) -> bool:
+    """
+    Test if Supabase is reachable.
+
+    Args:
+        timeout: Request timeout in seconds (default: 10 seconds for health check)
+
+    Returns:
+        True if Supabase is reachable, False otherwise
+    """
+    if not supabase_configured():
+        logger.warning("Supabase is not configured, cannot check connection")
+        return False
+    
+    check_timeout = timeout if timeout is not None else 10
+    
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/",
+            headers=supabase_headers(),
+            timeout=check_timeout
+        )
+        is_reachable = response.status_code < 500
+        if is_reachable:
+            logger.debug("Supabase connection check successful")
+        else:
+            logger.warning(f"Supabase connection check failed with status {response.status_code}")
+        return is_reachable
+    except (ConnectionError, Timeout) as e:
+        logger.warning(f"Supabase connection check failed: {e}")
+        return False
+    except RequestException as e:
+        logger.warning(f"Supabase connection check failed with unexpected error: {e}")
+        return False

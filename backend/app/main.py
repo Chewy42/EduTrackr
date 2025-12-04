@@ -24,6 +24,103 @@ app = Flask(__name__)
 CORS(app)
 
 
+# ============================================================================
+# Global Error Handlers and Request Validation
+# ============================================================================
+
+def _make_json_error(message: str, status_code: int, error_type: str = None):
+    """Create a standardized JSON error response."""
+    response_data = {
+        'error': message,
+        'status_code': status_code
+    }
+    if error_type:
+        response_data['type'] = error_type
+    response = jsonify(response_data)
+    response.status_code = status_code
+    return response
+
+
+@app.errorhandler(400)
+def handle_bad_request(error):
+    """Handle 400 Bad Request errors."""
+    message = str(error.description) if hasattr(error, 'description') and error.description else 'Bad request'
+    return _make_json_error(message, 400, 'bad_request')
+
+
+@app.errorhandler(404)
+def handle_not_found(error):
+    """Handle 404 Not Found errors."""
+    return _make_json_error('The requested resource was not found', 404, 'not_found')
+
+
+@app.errorhandler(405)
+def handle_method_not_allowed(error):
+    """Handle 405 Method Not Allowed errors."""
+    return _make_json_error('Method not allowed', 405, 'method_not_allowed')
+
+
+@app.errorhandler(422)
+def handle_unprocessable_entity(error):
+    """Handle 422 Unprocessable Entity errors."""
+    message = str(error.description) if hasattr(error, 'description') and error.description else 'Unprocessable entity'
+    return _make_json_error(message, 422, 'unprocessable_entity')
+
+
+@app.errorhandler(500)
+def handle_internal_error(error):
+    """Handle 500 Internal Server errors."""
+    print(f"Internal server error: {error}")
+    return _make_json_error('Internal server error', 500, 'internal_error')
+
+
+@app.errorhandler(502)
+def handle_bad_gateway(error):
+    """Handle 502 Bad Gateway errors."""
+    return _make_json_error('Bad gateway - upstream service unavailable', 502, 'bad_gateway')
+
+
+@app.errorhandler(503)
+def handle_service_unavailable(error):
+    """Handle 503 Service Unavailable errors."""
+    return _make_json_error('Service temporarily unavailable', 503, 'service_unavailable')
+
+
+@app.errorhandler(Exception)
+def handle_unhandled_exception(error):
+    """Catch-all handler for unhandled exceptions."""
+    print(f"Unhandled exception: {type(error).__name__}: {error}")
+    return _make_json_error('An unexpected error occurred', 500, 'unhandled_exception')
+
+
+@app.before_request
+def validate_json_content():
+    """Validate JSON parsing for requests with JSON content type."""
+    if request.method == 'OPTIONS':
+        return None
+    if request.content_type and 'application/json' in request.content_type:
+        if request.content_length and request.content_length > 0:
+            try:
+                request.get_json(force=False, silent=False)
+            except Exception:
+                return _make_json_error('Invalid JSON in request body', 400, 'invalid_json')
+    return None
+
+
+@app.after_request
+def ensure_cors_on_errors(response):
+    """Ensure CORS headers are present on all responses including errors."""
+    if 'Access-Control-Allow-Origin' not in response.headers:
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
 def build_preferences(email: str) -> Dict[str, Any]:
     # Fetch user_preferences from DB
     # First get user_id
