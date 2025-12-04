@@ -670,6 +670,145 @@ def _extract_transcript_course_codes(parsed_fields: Dict[str, Any]) -> Tuple[set
     return completed, in_prog
 
 
+def _build_student_data_context(parsed_fields: Dict[str, Any]) -> str:
+    """Build a comprehensive student data context string from parsed degree audit.
+    
+    Includes GPA, credits, courses, and degree requirements from the student's actual PDF.
+    """
+    if not parsed_fields:
+        return "No degree audit data available."
+    
+    sections = []
+    
+    # GPA Information
+    gpa = parsed_fields.get("gpa", {})
+    if gpa:
+        gpa_parts = []
+        if gpa.get("overall"):
+            gpa_parts.append(f"Overall GPA: {gpa['overall']}")
+        if gpa.get("major"):
+            gpa_parts.append(f"Major GPA: {gpa['major']}")
+        if gpa.get("institutional"):
+            gpa_parts.append(f"Institutional GPA: {gpa['institutional']}")
+        if gpa_parts:
+            sections.append("**GPA:**\n" + "\n".join(gpa_parts))
+    
+    # Credit Requirements
+    credits = parsed_fields.get("credit_requirements", {})
+    if credits:
+        credit_parts = []
+        if credits.get("required"):
+            credit_parts.append(f"Required: {credits['required']} credits")
+        if credits.get("earned"):
+            credit_parts.append(f"Earned: {credits['earned']} credits")
+        if credits.get("in_progress"):
+            credit_parts.append(f"In Progress: {credits['in_progress']} credits")
+        if credits.get("needed"):
+            credit_parts.append(f"Still Needed: {credits['needed']} credits")
+        if credit_parts:
+            sections.append("**Credits:**\n" + "\n".join(credit_parts))
+    
+    # Courses
+    courses = parsed_fields.get("courses", {})
+    if courses:
+        # Completed courses
+        completed = courses.get("completed", [])
+        if completed:
+            completed_list = []
+            for c in completed[:15]:  # Limit to 15 for readability
+                subj = c.get("subject", "")
+                num = c.get("number", "")
+                title = c.get("title", "")
+                grade = c.get("grade", "")
+                if subj and num:
+                    course_str = f"{subj} {num}"
+                    if title:
+                        course_str += f" - {title}"
+                    if grade:
+                        course_str += f" (Grade: {grade})"
+                    completed_list.append(course_str)
+            if completed_list:
+                sections.append(f"**Completed Courses ({len(completed)} total):**\n" + "\n".join(completed_list))
+                if len(completed) > 15:
+                    sections[-1] += f"\n... and {len(completed) - 15} more"
+        
+        # In-progress courses
+        in_progress = courses.get("in_progress", [])
+        if in_progress:
+            ip_list = []
+            for c in in_progress:
+                subj = c.get("subject", "")
+                num = c.get("number", "")
+                title = c.get("title", "")
+                if subj and num:
+                    course_str = f"{subj} {num}"
+                    if title:
+                        course_str += f" - {title}"
+                    ip_list.append(course_str)
+            if ip_list:
+                sections.append("**Currently In Progress:**\n" + "\n".join(ip_list))
+        
+        # Remaining/needed courses
+        remaining = courses.get("remaining", []) or courses.get("needed", [])
+        if remaining:
+            rem_list = []
+            for c in remaining[:10]:  # Limit for readability
+                if isinstance(c, dict):
+                    subj = c.get("subject", "")
+                    num = c.get("number", "")
+                    title = c.get("title", "")
+                    if subj and num:
+                        course_str = f"{subj} {num}"
+                        if title:
+                            course_str += f" - {title}"
+                        rem_list.append(course_str)
+                    elif title:
+                        rem_list.append(title)
+                elif isinstance(c, str):
+                    rem_list.append(c)
+            if rem_list:
+                sections.append(f"**Remaining Requirements ({len(remaining)} total):**\n" + "\n".join(rem_list))
+                if len(remaining) > 10:
+                    sections[-1] += f"\n... and {len(remaining) - 10} more"
+    
+    # Degree Requirements
+    degree_reqs = parsed_fields.get("degree_requirements", {})
+    if degree_reqs:
+        req_parts = []
+        gen_ed = degree_reqs.get("general_education", {})
+        if gen_ed:
+            completed_ge = gen_ed.get("completed", [])
+            remaining_ge = gen_ed.get("remaining", [])
+            if completed_ge or remaining_ge:
+                req_parts.append(f"General Education: {len(completed_ge)} completed, {len(remaining_ge)} remaining")
+        
+        major = degree_reqs.get("major", {})
+        if major:
+            completed_maj = major.get("completed", [])
+            remaining_maj = major.get("remaining", [])
+            if completed_maj or remaining_maj:
+                req_parts.append(f"Major Requirements: {len(completed_maj)} completed, {len(remaining_maj)} remaining")
+        
+        if req_parts:
+            sections.append("**Degree Progress:**\n" + "\n".join(req_parts))
+    
+    # Academic Status
+    academic_status = parsed_fields.get("academic_status", {})
+    if academic_status:
+        status_parts = []
+        if academic_status.get("standing"):
+            status_parts.append(f"Standing: {academic_status['standing']}")
+        if academic_status.get("honors"):
+            status_parts.append(f"Honors: {academic_status['honors']}")
+        if status_parts:
+            sections.append("**Academic Status:**\n" + "\n".join(status_parts))
+    
+    if not sections:
+        return "Degree audit data is available but no detailed course information found."
+    
+    return "\n\n".join(sections)
+
+
 def _compute_degree_status(parsed_fields: Dict[str, Any], catalog_context: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Compute a simple status per catalog requirement section.
 
@@ -788,8 +927,9 @@ def generate_reply(
     # ========== EXPLORE: Use LLM for open-ended conversation ==========
     catalog_context = _build_catalog_context(parsed_fields) if parsed_fields else None
     catalog_str = json.dumps(catalog_context, indent=2) if catalog_context else "null"
-    degree_status = _compute_degree_status(parsed_fields, catalog_context)
-    degree_status_str = json.dumps(degree_status, indent=2) if degree_status else "[]"
+    
+    # Build comprehensive student data context from their actual degree audit
+    student_data_context = _build_student_data_context(parsed_fields)
 
     history = get_chat_history(session_id)
     has_history = len(history) > 0
@@ -819,10 +959,10 @@ You are an **AI academic planning assistant** — a helpful tool designed to sup
 - Program: {student_info.get('program', 'Unknown')}
 - Catalog Year: {student_info.get('catalog_year', 'Unknown')}
 
-**DEGREE STATUS** (from uploaded audit):
-{degree_status_str}
+**STUDENT DEGREE AUDIT DATA**:
+{student_data_context}
 
-**CATALOG REQUIREMENTS**:
+**CATALOG REQUIREMENTS** (for reference):
 {catalog_str}
 {first_message_instruction}
 **RESPONSE GUIDELINES**:
@@ -831,6 +971,7 @@ You are an **AI academic planning assistant** — a helpful tool designed to sup
 - Keep responses concise (under 150 words) but complete — never cut off mid-sentence
 - Always end with an **open-ended question** to encourage the student to share more
 - Be transparent about uncertainty — say "based on your audit data" rather than making definitive claims
+- Use the student's actual course data and GPA when discussing their progress
 
 **REQUIRED OUTPUT FORMAT (XML)**:
 You MUST respond in this exact XML format with exactly 3 follow-up suggestions:
@@ -974,8 +1115,9 @@ def generate_reply_stream(
     # ========== EXPLORE: Use LLM for open-ended conversation ==========
     catalog_context = _build_catalog_context(parsed_fields) if parsed_fields else None
     catalog_str = json.dumps(catalog_context, indent=2) if catalog_context else "null"
-    degree_status = _compute_degree_status(parsed_fields, catalog_context)
-    degree_status_str = json.dumps(degree_status, indent=2) if degree_status else "[]"
+    
+    # Build comprehensive student data context from their actual degree audit
+    student_data_context = _build_student_data_context(parsed_fields)
 
     history = get_chat_history(session_id)
     has_history = len(history) > 0
@@ -1005,10 +1147,10 @@ You are an **AI academic planning assistant** — a helpful tool designed to sup
 - Program: {student_info.get('program', 'Unknown')}
 - Catalog Year: {student_info.get('catalog_year', 'Unknown')}
 
-**DEGREE STATUS** (from uploaded audit):
-{degree_status_str}
+**STUDENT DEGREE AUDIT DATA**:
+{student_data_context}
 
-**CATALOG REQUIREMENTS**:
+**CATALOG REQUIREMENTS** (for reference):
 {catalog_str}
 {first_message_instruction}
 **RESPONSE GUIDELINES**:
@@ -1017,6 +1159,7 @@ You are an **AI academic planning assistant** — a helpful tool designed to sup
 - Keep responses concise (under 150 words) but complete — never cut off mid-sentence
 - Always end with an **open-ended question** to encourage the student to share more
 - Be transparent about uncertainty — say "based on your audit data" rather than making definitive claims
+- Use the student's actual course data and GPA when discussing their progress
 
 **REQUIRED OUTPUT FORMAT**:
 After your complete response (with **bold** for emphasis, ending with an open-ended question), include exactly 3 quick-reply suggestions:
