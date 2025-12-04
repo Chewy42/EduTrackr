@@ -104,6 +104,15 @@ Both options proxy `/api/*` to the backend.
 The application is configured for autoscale deployment on Replit, running both frontend and backend as a single service.
 
 ## Recent Changes
+- 2025-12-04: Major robustness improvements to prevent crashes
+  - Added global error handlers to Flask backend for all HTTP errors (400, 404, 405, 500, 502, 503)
+  - Added JSON validation middleware to catch malformed requests
+  - Improved Supabase client with retry logic (3 retries with exponential backoff)
+  - Added React Error Boundary to prevent UI crashes from breaking the entire app
+  - Improved AuthContext with health checks, token validation, and error recovery
+  - Added backend_unavailable state for graceful degradation when server is down
+  - Created robust API client wrapper with retry logic and timeout handling
+  
 - 2025-11-12: Initial setup for Replit environment
   - Created Flask backend with auth endpoints
   - Configured Vite to run on port 5173 with backend proxy
